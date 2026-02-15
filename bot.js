@@ -1,3 +1,15 @@
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Vargas Bot is running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Web server is running on port ${PORT}`);
+});
+
 const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({
@@ -18,4 +30,4 @@ client.on('messageCreate', message => {
   }
 });
 
-client.login('MTQ3MjQ4MjgwOTA5NTM5MzM4NA.GQ5qTy.OrEkZ6RxbG67qg0M7v-HilJkRPNRYDyRiaiZnc');
+client.login(process.env.BOT_TOKEN);
