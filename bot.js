@@ -14,7 +14,7 @@ const {
   StringSelectMenuOptionBuilder
 } = require("discord.js"); // import everything we need from discord.js
 
-const { startMonitor, refreshChannel, verifyChannel, PLATFORM_CONTENT_TYPES } = require("./announcements"); // import announcement functions
+const { startMonitor, refreshChannel, verifyChannel, parseChannelInput, PLATFORM_CONTENT_TYPES, pendingAdds } = require("./announcements"); // import announcement functions
 const { loadData, saveData } = require("./storage"); // import storage functions
 
 // Set up the Discord client with the permissions it needs
@@ -51,7 +51,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName("channel")
-        .setDescription("The channel @ handle or ID")
+        .setDescription("The channel @handle, username, channel ID, or full URL")
         .setRequired(true)
     )
     .addStringOption(option =>
@@ -71,6 +71,17 @@ const commands = [
   new SlashCommandBuilder()
     .setName("remove")
     .setDescription("Remove or edit a monitored channel")
+    .addStringOption(option =>
+      option
+        .setName("platform")
+        .setDescription("Which platform is the channel on?")
+        .setRequired(true)
+        .addChoices(
+          { name: "YouTube", value: "youtube" },
+          { name: "Twitch",  value: "twitch"  },
+          { name: "Rumble",  value: "rumble"  }
+        )
+    )
     .addStringOption(option =>
       option
         .setName("action")
@@ -94,6 +105,17 @@ const commands = [
     .setDescription("Set the announcement message and @ mentions for a monitored channel")
     .addStringOption(option =>
       option
+        .setName("platform")
+        .setDescription("Which platform is the channel on?")
+        .setRequired(true)
+        .addChoices(
+          { name: "YouTube", value: "youtube" },
+          { name: "Twitch",  value: "twitch"  },
+          { name: "Rumble",  value: "rumble"  }
+        )
+    )
+    .addStringOption(option =>
+      option
         .setName("nickname")
         .setDescription("The nickname of the channel to update")
         .setRequired(true)
@@ -111,10 +133,21 @@ const commands = [
         .setRequired(false)
     ),
 
-  // /refresh - force recheck a specific channel by nickname
+  // /refresh - force recheck a specific channel by nickname and platform
   new SlashCommandBuilder()
     .setName("refresh")
     .setDescription("Force a recheck of a specific monitored channel")
+    .addStringOption(option =>
+      option
+        .setName("platform")
+        .setDescription("Which platform is the channel on?")
+        .setRequired(true)
+        .addChoices(
+          { name: "YouTube", value: "youtube" },
+          { name: "Twitch",  value: "twitch"  },
+          { name: "Rumble",  value: "rumble"  }
+        )
+    )
     .addStringOption(option =>
       option
         .setName("nickname")
@@ -142,6 +175,17 @@ const commands = [
   new SlashCommandBuilder()
     .setName("setcontenttypes")
     .setDescription("Set which content types trigger announcements for a channel")
+    .addStringOption(option =>
+      option
+        .setName("platform")
+        .setDescription("Which platform is the channel on?")
+        .setRequired(true)
+        .addChoices(
+          { name: "YouTube", value: "youtube" },
+          { name: "Twitch",  value: "twitch"  },
+          { name: "Rumble",  value: "rumble"  }
+        )
+    )
     .addStringOption(option =>
       option
         .setName("nickname")
@@ -235,26 +279,21 @@ client.on("interactionCreate", async interaction => {
       const nickname       = interaction.options.getString("nickname");
       const discordChannel = interaction.options.getChannel("discordchannel");
 
-      // Check if this nickname is already in use in this server
-      const allChannels = [
-        ...(data[guildId].announcements.youtube || []),
-        ...(data[guildId].announcements.twitch  || []),
-        ...(data[guildId].announcements.rumble  || [])
-      ];
-
-      const nicknameExists = allChannels.find(
+      // Check if this nickname is already in use on this platform in this server
+      const platformChannels = data[guildId].announcements[platform] || [];
+      const nicknameExists   = platformChannels.find(
         c => c.nickname.toLowerCase() === nickname.toLowerCase()
       );
 
       if (nicknameExists) {
         await interaction.reply({
-          content:   `❌ A channel with the nickname **${nickname}** already exists. Please choose a different nickname.`,
+          content:   `❌ A channel with the nickname **${nickname}** already exists on ${platform}. Please choose a different nickname.`,
           ephemeral: true
         });
         return;
       }
 
-      // Tell the user we're verifying the channel - this can take a moment
+      // Tell the user we're verifying - this can take a moment
       await interaction.deferReply({ ephemeral: true });
 
       // Verify the channel actually exists on the platform
@@ -262,7 +301,7 @@ client.on("interactionCreate", async interaction => {
 
       if (!verified) {
         await interaction.editReply({
-          content: `❌ Could not find that channel on ${platform}. Please check the @ handle or ID and try again.`
+          content: `❌ Could not find that channel on ${platform}. Please check the input and try again. You can use a @handle, username, channel ID, or full URL.`
         });
         return;
       }
@@ -278,32 +317,45 @@ client.on("interactionCreate", async interaction => {
 
       if (alreadyExists) {
         await interaction.editReply({
-          content: `❌ That channel is already being monitored under the nickname **${alreadyExists.nickname}**.`
+          content: `❌ That channel is already being monitored under the nickname **${alreadyExists.nickname}** on ${platform}.`
         });
         return;
       }
 
+      // Generate a unique key for this pending add
+      // We store the verified channel data in memory instead of in the select menu value
+      // This avoids Discord's 100 character limit on select menu values
+      const pendingKey = `${guildId}_${interaction.user.id}_${Date.now()}`;
+      pendingAdds.set(pendingKey, {
+        platform,
+        verified,
+        nickname,
+        discordChannelId: discordChannel.id,
+        expires: Date.now() + 300000 // expires after 5 minutes
+      });
+
       // Build a preview embed so the admin can see what announcements will look like
       const { EmbedBuilder } = require("discord.js");
       const previewEmbed = new EmbedBuilder()
-        .setTitle(`📺 Preview: ${verified.displayName}`)
+        .setTitle(`Preview: ${verified.displayName}`)
         .setColor(
           platform === "youtube" ? "#FF0000" :
           platform === "twitch"  ? "#9146FF" : "#85C742"
         )
         .addFields(
-          { name: "Platform",         value: platform,              inline: true },
-          { name: "Channel",          value: verified.displayName,  inline: true },
-          { name: "Handle",           value: verified.handle,       inline: true },
-          { name: "Nickname",         value: nickname,              inline: true },
-          { name: "Posting in",       value: `<#${discordChannel.id}>`, inline: true },
-          { name: "Content types",    value: PLATFORM_CONTENT_TYPES[platform].join(", "), inline: false }
+          { name: "Platform",      value: platform,                                        inline: true },
+          { name: "Channel",       value: verified.displayName,                            inline: true },
+          { name: "Handle",        value: verified.handle,                                 inline: true },
+          { name: "Nickname",      value: nickname,                                        inline: true },
+          { name: "Posting in",    value: `<#${discordChannel.id}>`,                       inline: true },
+          { name: "Content types", value: PLATFORM_CONTENT_TYPES[platform].join(", "),    inline: false }
         )
-        .setFooter({ text: "Reply with confirm to add this channel, or cancel to abort." });
+        .setFooter({ text: "Use the menu below to confirm or cancel." });
 
       if (verified.thumbnail) previewEmbed.setThumbnail(verified.thumbnail);
 
-      // Show the preview and ask for confirmation using a select menu
+      // Show preview with confirm/cancel select menu
+      // We only store the pendingKey in the value, not all the channel data
       const confirmRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`confirm_add_${guildId}`)
@@ -311,7 +363,7 @@ client.on("interactionCreate", async interaction => {
           .addOptions(
             new StringSelectMenuOptionBuilder()
               .setLabel("✅ Confirm - Add this channel")
-              .setValue(`confirm|${platform}|${verified.id}|${verified.displayName}|${verified.handle}|${nickname}|${discordChannel.id}`),
+              .setValue(`confirm|${pendingKey}`),
             new StringSelectMenuOptionBuilder()
               .setLabel("❌ Cancel")
               .setValue("cancel")
@@ -319,8 +371,8 @@ client.on("interactionCreate", async interaction => {
       );
 
       await interaction.editReply({
-        content: "Here's a preview of what will be monitored:",
-        embeds:  [previewEmbed],
+        content:    "Here's a preview of what will be monitored:",
+        embeds:     [previewEmbed],
         components: [confirmRow]
       });
     }
@@ -337,28 +389,26 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
+      const platform = interaction.options.getString("platform");
       const action   = interaction.options.getString("action");
       const nickname = interaction.options.getString("nickname");
 
-      // Find the channel across all platforms
-      let foundConfig   = null;
-      let foundPlatform = null;
-
-      for (const platform of ["youtube", "twitch", "rumble"]) {
-        if (!data[guildId].announcements[platform]) continue;
-        const match = data[guildId].announcements[platform].find(
-          c => c.nickname.toLowerCase() === nickname.toLowerCase()
-        );
-        if (match) {
-          foundConfig   = match;
-          foundPlatform = platform;
-          break;
-        }
+      // Find the channel on the specified platform
+      if (!data[guildId].announcements[platform]) {
+        await interaction.reply({
+          content:   `❌ No ${platform} channels are being monitored in this server.`,
+          ephemeral: true
+        });
+        return;
       }
+
+      const foundConfig = data[guildId].announcements[platform].find(
+        c => c.nickname.toLowerCase() === nickname.toLowerCase()
+      );
 
       if (!foundConfig) {
         await interaction.reply({
-          content:   `❌ No channel found with the nickname **${nickname}**. Use /list to see all monitored channels.`,
+          content:   `❌ No ${platform} channel found with the nickname **${nickname}**. Use /list to see all monitored channels.`,
           ephemeral: true
         });
         return;
@@ -366,12 +416,12 @@ client.on("interactionCreate", async interaction => {
 
       // REMOVE action
       if (action === "remove") {
-        data[guildId].announcements[foundPlatform] = data[guildId].announcements[foundPlatform].filter(
+        data[guildId].announcements[platform] = data[guildId].announcements[platform].filter(
           c => c.nickname.toLowerCase() !== nickname.toLowerCase()
         );
         saveData(data);
         await interaction.reply({
-          content:   `✅ Successfully removed **${foundConfig.displayName}** (${nickname}) from monitoring.`,
+          content:   `✅ Successfully removed **${foundConfig.displayName}** (${nickname}) from ${platform} monitoring.`,
           ephemeral: true
         });
       }
@@ -380,34 +430,34 @@ client.on("interactionCreate", async interaction => {
       else if (action === "edit") {
         const editRow = new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
-            .setCustomId(`edit_field_${guildId}_${nickname}`)
+            .setCustomId(`edit_field_${guildId}`)
             .setPlaceholder("What would you like to edit?")
             .addOptions(
               new StringSelectMenuOptionBuilder()
                 .setLabel("Nickname")
                 .setDescription("Change the nickname used to identify this channel")
-                .setValue(`editfield|nickname|${nickname}|${foundPlatform}`),
+                .setValue(`editfield|nickname|${nickname}|${platform}`),
               new StringSelectMenuOptionBuilder()
                 .setLabel("Platform")
                 .setDescription("Move this channel to a different platform")
-                .setValue(`editfield|platform|${nickname}|${foundPlatform}`),
+                .setValue(`editfield|platform|${nickname}|${platform}`),
               new StringSelectMenuOptionBuilder()
                 .setLabel("Discord announcement channel")
                 .setDescription("Change which Discord channel announcements are posted in")
-                .setValue(`editfield|discordchannel|${nickname}|${foundPlatform}`),
+                .setValue(`editfield|discordchannel|${nickname}|${platform}`),
               new StringSelectMenuOptionBuilder()
                 .setLabel("Custom message")
                 .setDescription("Change the announcement message")
-                .setValue(`editfield|message|${nickname}|${foundPlatform}`),
+                .setValue(`editfield|message|${nickname}|${platform}`),
               new StringSelectMenuOptionBuilder()
                 .setLabel("@ Mentions")
                 .setDescription("Change which roles are mentioned in announcements")
-                .setValue(`editfield|mentions|${nickname}|${foundPlatform}`)
+                .setValue(`editfield|mentions|${nickname}|${platform}`)
             )
         );
 
         await interaction.reply({
-          content:    `What would you like to edit for **${foundConfig.displayName}** (${nickname})?`,
+          content:    `What would you like to edit for **${foundConfig.displayName}** (${nickname}) on ${platform}?`,
           components: [editRow],
           ephemeral:  true
         });
@@ -426,35 +476,33 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
+      const platform      = interaction.options.getString("platform");
       const nickname      = interaction.options.getString("nickname");
       const customMessage = interaction.options.getString("message");
       const mentionsInput = interaction.options.getString("mentions");
 
-      // Find the channel across all platforms
-      let foundConfig   = null;
-      let foundPlatform = null;
-
-      for (const platform of ["youtube", "twitch", "rumble"]) {
-        if (!data[guildId].announcements[platform]) continue;
-        const match = data[guildId].announcements[platform].find(
-          c => c.nickname.toLowerCase() === nickname.toLowerCase()
-        );
-        if (match) {
-          foundConfig   = match;
-          foundPlatform = platform;
-          break;
-        }
-      }
-
-      if (!foundConfig) {
+      // Find the channel on the specified platform
+      if (!data[guildId].announcements[platform]) {
         await interaction.reply({
-          content:   `❌ No channel found with the nickname **${nickname}**. Use /list to see all monitored channels.`,
+          content:   `❌ No ${platform} channels are being monitored in this server.`,
           ephemeral: true
         });
         return;
       }
 
-      // Update the custom message if provided
+      const foundConfig = data[guildId].announcements[platform].find(
+        c => c.nickname.toLowerCase() === nickname.toLowerCase()
+      );
+
+      if (!foundConfig) {
+        await interaction.reply({
+          content:   `❌ No ${platform} channel found with the nickname **${nickname}**. Use /list to see all monitored channels.`,
+          ephemeral: true
+        });
+        return;
+      }
+
+      // Update custom message if provided
       if (customMessage) {
         foundConfig.customMessage = customMessage;
       }
@@ -463,15 +511,15 @@ client.on("interactionCreate", async interaction => {
       // Expects comma separated role IDs e.g. "123456,789012"
       if (mentionsInput) {
         foundConfig.mentions = mentionsInput
-          .split(",")                // split by comma
-          .map(id => id.trim())      // remove any spaces
+          .split(",")                 // split by comma
+          .map(id => id.trim())       // remove any spaces
           .filter(id => id.length > 0); // remove empty entries
       }
 
       saveData(data);
 
       await interaction.reply({
-        content:   `✅ Updated announcement settings for **${foundConfig.displayName}** (${nickname}).`,
+        content:   `✅ Updated announcement settings for **${foundConfig.displayName}** (${nickname}) on ${platform}.`,
         ephemeral: true
       });
     }
@@ -480,8 +528,9 @@ client.on("interactionCreate", async interaction => {
     // /refresh
     // ----------------------------------------------------------
     else if (commandName === "refresh") {
+      const platform = interaction.options.getString("platform");
       const nickname = interaction.options.getString("nickname");
-      await refreshChannel(client, guildId, nickname, interaction);
+      await refreshChannel(client, guildId, nickname, platform, interaction);
     }
 
     // ----------------------------------------------------------
@@ -489,7 +538,6 @@ client.on("interactionCreate", async interaction => {
     // ----------------------------------------------------------
     else if (commandName === "list") {
       const platform = interaction.options.getString("platform");
-
       const channels = data[guildId].announcements[platform];
 
       if (!channels || channels.length === 0) {
@@ -527,54 +575,52 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
+      const platform = interaction.options.getString("platform");
       const nickname = interaction.options.getString("nickname");
 
-      // Find the channel across all platforms
-      let foundConfig   = null;
-      let foundPlatform = null;
-
-      for (const platform of ["youtube", "twitch", "rumble"]) {
-        if (!data[guildId].announcements[platform]) continue;
-        const match = data[guildId].announcements[platform].find(
-          c => c.nickname.toLowerCase() === nickname.toLowerCase()
-        );
-        if (match) {
-          foundConfig   = match;
-          foundPlatform = platform;
-          break;
-        }
+      // Find the channel on the specified platform
+      if (!data[guildId].announcements[platform]) {
+        await interaction.reply({
+          content:   `❌ No ${platform} channels are being monitored in this server.`,
+          ephemeral: true
+        });
+        return;
       }
+
+      const foundConfig = data[guildId].announcements[platform].find(
+        c => c.nickname.toLowerCase() === nickname.toLowerCase()
+      );
 
       if (!foundConfig) {
         await interaction.reply({
-          content:   `❌ No channel found with the nickname **${nickname}**.`,
+          content:   `❌ No ${platform} channel found with the nickname **${nickname}**.`,
           ephemeral: true
         });
         return;
       }
 
       // Build a select menu with all available content types for this platform
-      const contentTypes = PLATFORM_CONTENT_TYPES[foundPlatform];
+      const contentTypes = PLATFORM_CONTENT_TYPES[platform];
       const currentTypes = foundConfig.enabledTypes || contentTypes;
 
       const typeRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-          .setCustomId(`set_content_types_${guildId}_${nickname}`)
+          .setCustomId(`set_content_types_${guildId}_${nickname}_${platform}`)
           .setPlaceholder("Select which content types to announce")
-          .setMinValues(1)                    // must select at least 1
-          .setMaxValues(contentTypes.length)  // can select all
+          .setMinValues(1)                   // must select at least 1
+          .setMaxValues(contentTypes.length) // can select all
           .addOptions(
             contentTypes.map(type =>
               new StringSelectMenuOptionBuilder()
                 .setLabel(type.charAt(0).toUpperCase() + type.slice(1)) // capitalize first letter
-                .setValue(`contenttype|${type}|${nickname}|${foundPlatform}`)
+                .setValue(`contenttype|${type}|${nickname}|${platform}`)
                 .setDefault(currentTypes.includes(type)) // pre-select currently enabled types
             )
           )
       );
 
       await interaction.reply({
-        content:    `Select which content types should trigger announcements for **${foundConfig.displayName}**:`,
+        content:    `Select which content types should trigger announcements for **${foundConfig.displayName}** on ${platform}:`,
         components: [typeRow],
         ephemeral:  true
       });
@@ -638,9 +684,24 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
-      // Parse the confirmation value
-      // format: confirm|platform|channelId|displayName|handle|nickname|discordChannelId
-      const [, platform, channelId, displayName, handle, nickname, discordChannelId] = selected.split("|");
+      // format: confirm|pendingKey
+      const [, pendingKey] = selected.split("|");
+
+      // Retrieve the pending add data from memory
+      const pending = pendingAdds.get(pendingKey);
+
+      if (!pending || Date.now() > pending.expires) {
+        // Pending add expired or not found
+        await interaction.update({
+          content:    "❌ This confirmation has expired. Please run /add again.",
+          embeds:     [],
+          components: []
+        });
+        pendingAdds.delete(pendingKey);
+        return;
+      }
+
+      const { platform, verified, nickname, discordChannelId } = pending;
 
       if (!data[guildId].announcements[platform]) {
         data[guildId].announcements[platform] = [];
@@ -648,15 +709,15 @@ client.on("interactionCreate", async interaction => {
 
       // Add the new channel config
       data[guildId].announcements[platform].push({
-        channelId,                                              // platform channel ID
-        displayName,                                           // display name from platform
-        handle,                                                // @ handle
-        nickname,                                              // server nickname for commands
-        discordChannelId,                                      // Discord channel to post in
-        enabledTypes: PLATFORM_CONTENT_TYPES[platform],       // all types enabled by default
-        customMessage:    null,                                // no custom message yet
-        mentions:         [],                                  // no mentions yet
-        lastContentId:    null,                                // no content announced yet
+        channelId:        verified.id,                          // platform channel ID
+        displayName:      verified.displayName,                 // display name from platform
+        handle:           verified.handle,                      // @ handle
+        nickname,                                               // server nickname for commands
+        discordChannelId,                                       // Discord channel to post in
+        enabledTypes:     PLATFORM_CONTENT_TYPES[platform],    // all types enabled by default
+        customMessage:    null,                                 // no custom message yet
+        mentions:         [],                                   // no mentions yet
+        lastContentId:    null,                                 // no content announced yet
         lastTitle:        null,
         lastThumbnail:    null,
         lastMessageId:    null,
@@ -666,9 +727,10 @@ client.on("interactionCreate", async interaction => {
       });
 
       saveData(data);
+      pendingAdds.delete(pendingKey); // clean up pending add from memory
 
       await interaction.update({
-        content:    `✅ Now monitoring **${displayName}** (${handle}) on ${platform}! Announcements will be posted in <#${discordChannelId}>.`,
+        content:    `✅ Now monitoring **${verified.displayName}** (${verified.handle}) on ${platform}! Announcements will be posted in <#${discordChannelId}>.`,
         embeds:     [],
         components: []
       });
@@ -678,7 +740,7 @@ client.on("interactionCreate", async interaction => {
     // Edit field selection
     // ----------------------------------------------------------
     else if (customId.startsWith("edit_field_")) {
-      const selected  = interaction.values[0];
+      const selected = interaction.values[0];
 
       // format: editfield|field|nickname|platform
       const [, field, nickname, platform] = selected.split("|");
@@ -722,8 +784,7 @@ client.on("interactionCreate", async interaction => {
         await interaction.showModal(modal);
       }
 
-      // For Discord channel, show a message asking them to use /remove edit again with the channel option
-      // Discord modals don't support channel pickers so we handle this differently
+      // Discord modals don't support channel pickers so we ask them to re-add instead
       else if (field === "discordchannel") {
         await interaction.update({
           content:    `To change the announcement channel for **${channelConfig.displayName}**, please remove it with /remove and re-add it with the new Discord channel.`,
@@ -735,12 +796,18 @@ client.on("interactionCreate", async interaction => {
       else if (field === "platform") {
         const platformRow = new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
-            .setCustomId(`edit_platform_${guildId}_${nickname}_${platform}`)
+            .setCustomId(`edit_platform_${guildId}`)
             .setPlaceholder("Select new platform")
             .addOptions(
-              new StringSelectMenuOptionBuilder().setLabel("YouTube").setValue(`newplatform|youtube|${nickname}|${platform}`),
-              new StringSelectMenuOptionBuilder().setLabel("Twitch").setValue(`newplatform|twitch|${nickname}|${platform}`),
-              new StringSelectMenuOptionBuilder().setLabel("Rumble").setValue(`newplatform|rumble|${nickname}|${platform}`)
+              new StringSelectMenuOptionBuilder()
+                .setLabel("YouTube")
+                .setValue(`newplatform|youtube|${nickname}|${platform}`),
+              new StringSelectMenuOptionBuilder()
+                .setLabel("Twitch")
+                .setValue(`newplatform|twitch|${nickname}|${platform}`),
+              new StringSelectMenuOptionBuilder()
+                .setLabel("Rumble")
+                .setValue(`newplatform|rumble|${nickname}|${platform}`)
             )
         );
 
@@ -795,7 +862,7 @@ client.on("interactionCreate", async interaction => {
     // ----------------------------------------------------------
     else if (customId.startsWith("set_content_types_")) {
       // format of each value: contenttype|type|nickname|platform
-      const firstValue = interaction.values[0];
+      const firstValue    = interaction.values[0];
       const [, , nickname, platform] = firstValue.split("|");
 
       // Extract just the content type names from all selected values
@@ -817,7 +884,7 @@ client.on("interactionCreate", async interaction => {
       saveData(data);
 
       await interaction.update({
-        content:    `✅ Updated content types for **${channelConfig.displayName}**: ${selectedTypes.join(", ")}.`,
+        content:    `✅ Updated content types for **${channelConfig.displayName}** on ${platform}: ${selectedTypes.join(", ")}.`,
         components: []
       });
     }
@@ -833,7 +900,7 @@ client.on("interactionCreate", async interaction => {
     // format: edit_modal_field_nickname_platform
     if (customId.startsWith("edit_modal_")) {
       const parts    = customId.split("_");
-      const field    = parts[2];              // what field we're editing
+      const field    = parts[2];                // what field we're editing
       const platform = parts[parts.length - 1]; // last part is always platform
       // nickname is everything between field and platform
       const nickname = parts.slice(3, parts.length - 1).join("_");
@@ -853,19 +920,14 @@ client.on("interactionCreate", async interaction => {
       }
 
       if (field === "nickname") {
-        // Check new nickname isn't already taken
-        const allChannels = [
-          ...(data[guildId].announcements.youtube || []),
-          ...(data[guildId].announcements.twitch  || []),
-          ...(data[guildId].announcements.rumble  || [])
-        ];
-        const taken = allChannels.find(
+        // Check new nickname isn't already taken on this platform
+        const taken = (data[guildId].announcements[platform] || []).find(
           c => c.nickname.toLowerCase() === newValue.toLowerCase() &&
                c.nickname.toLowerCase() !== nickname.toLowerCase()
         );
         if (taken) {
           await interaction.reply({
-            content:   `❌ The nickname **${newValue}** is already in use. Please choose a different one.`,
+            content:   `❌ The nickname **${newValue}** is already in use on ${platform}. Please choose a different one.`,
             ephemeral: true
           });
           return;
@@ -885,7 +947,7 @@ client.on("interactionCreate", async interaction => {
       saveData(data);
 
       await interaction.reply({
-        content:   `✅ Successfully updated **${field}** for **${channelConfig.displayName}**.`,
+        content:   `✅ Successfully updated **${field}** for **${channelConfig.displayName}** on ${platform}.`,
         ephemeral: true
       });
     }

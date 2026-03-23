@@ -165,47 +165,105 @@ async function getTwitchToken() {
   }
 }
 
+// Parses any input format into a clean channel identifier
+// Handles @handles, usernames, channel IDs, and full URLs for all platforms
+function parseChannelInput(platform, input) {
+  const trimmed = input.trim();
+
+  if (platform === "youtube") {
+    // Handle YouTube URLs
+    if (trimmed.includes("youtube.com") || trimmed.includes("youtu.be")) {
+      // https://youtube.com/@handle
+      const handleMatch = trimmed.match(/@([^/?&]+)/);
+      if (handleMatch) return { type: "handle", value: handleMatch[1] };
+
+      // https://youtube.com/channel/UCxxxxxxx
+      const channelMatch = trimmed.match(/\/channel\/([^/?&]+)/);
+      if (channelMatch) return { type: "id", value: channelMatch[1] };
+
+      // https://youtube.com/c/username or https://youtube.com/user/username
+      const userMatch = trimmed.match(/\/(?:c|user)\/([^/?&]+)/);
+      if (userMatch) return { type: "handle", value: userMatch[1] };
+    }
+
+    // @handle without URL
+    if (trimmed.startsWith("@")) return { type: "handle", value: trimmed.slice(1) };
+
+    // YouTube channel IDs start with UC and are 24 characters long
+    if (trimmed.startsWith("UC") && trimmed.length === 24) {
+      return { type: "id", value: trimmed };
+    }
+
+    // Assume anything else is a handle
+    return { type: "handle", value: trimmed };
+  }
+
+  if (platform === "twitch") {
+    // Handle Twitch URLs
+    if (trimmed.includes("twitch.tv")) {
+      // https://twitch.tv/username
+      const match = trimmed.match(/twitch\.tv\/([^/?&]+)/);
+      if (match) return { type: "username", value: match[1] };
+    }
+
+    // Plain username (with or without @, we strip it)
+    return { type: "username", value: trimmed.replace("@", "") };
+  }
+
+  if (platform === "rumble") {
+    // Handle Rumble URLs
+    if (trimmed.includes("rumble.com")) {
+      // https://rumble.com/c/username or https://rumble.com/user/username
+      const match = trimmed.match(/rumble\.com\/(?:c|user)\/([^/?&]+)/);
+      if (match) return { type: "username", value: match[1] };
+    }
+
+    // @handle or plain username
+    return { type: "username", value: trimmed.replace("@", "") };
+  }
+
+  return { type: "username", value: trimmed.replace("@", "") };
+}
+
 // Verifies a channel exists on the given platform and returns its details
 // platform = "youtube"/"twitch"/"rumble"
-// channelInput = could be a channel ID or @ handle, we handle both
+// channelInput = @handle, username, channel ID, or full URL
 async function verifyChannel(platform, channelInput) {
-  // Remove @ symbol if they included it
-  const cleanInput = channelInput.startsWith("@")
-    ? channelInput.slice(1)
-    : channelInput;
+  // Parse the input into a clean identifier first
+  const parsed = parseChannelInput(platform, channelInput);
 
   if (platform === "youtube") {
     try {
-      // First try searching by channel ID directly
-      let response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
-        params: {
-          key:  process.env.YOUTUBE_API_KEY,
-          id:   cleanInput, // try as channel ID first
-          part: "snippet"
-        }
-      });
+      let response;
 
-      // If no results by ID, try searching by username/handle instead
-      if (!response.data.items || response.data.items.length === 0) {
+      if (parsed.type === "id") {
+        // Look up directly by channel ID
+        response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
+          params: {
+            key:  process.env.YOUTUBE_API_KEY,
+            id:   parsed.value,
+            part: "snippet"
+          }
+        });
+      } else {
+        // Look up by handle
         response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
           params: {
             key:       process.env.YOUTUBE_API_KEY,
-            forHandle: cleanInput, // try as @ handle
+            forHandle: parsed.value,
             part:      "snippet"
           }
         });
       }
 
-      // If still no results, channel doesn't exist
       if (!response.data.items || response.data.items.length === 0) return null;
 
       const channel = response.data.items[0];
 
-      // Return standardized channel info
       return {
         id:          channel.id,
         displayName: channel.snippet.title,
-        handle:      `@${channel.snippet.customUrl || cleanInput}`,
+        handle:      `@${channel.snippet.customUrl || parsed.value}`,
         thumbnail:   channel.snippet.thumbnails.high.url,
         platform:    "youtube"
       };
@@ -220,9 +278,8 @@ async function verifyChannel(platform, channelInput) {
       const token = await getTwitchToken();
       if (!token) return null;
 
-      // Search for the channel by username
       const response = await axios.get("https://api.twitch.tv/helix/users", {
-        params: { login: cleanInput }, // Twitch uses login name not ID for lookup
+        params: { login: parsed.value }, // always a username for Twitch
         headers: {
           "Client-ID":     process.env.TWITCH_CLIENT_ID,
           "Authorization": `Bearer ${token}`
@@ -252,8 +309,9 @@ async function verifyChannel(platform, channelInput) {
     // TODO: Update this when Rumble releases an official public API
     // Devon has reached out to Rumble requesting API access
     try {
-      const rssUrl = `https://rumble.com/c/${cleanInput}/rss`;
-      const altUrl = `https://rumble.com/user/${cleanInput}/rss`;
+      const username = parsed.value;
+      const rssUrl   = `https://rumble.com/c/${username}/rss`;
+      const altUrl   = `https://rumble.com/user/${username}/rss`;
 
       let feed = null;
 
@@ -266,9 +324,9 @@ async function verifyChannel(platform, channelInput) {
       if (!feed) return null;
 
       return {
-        id:          cleanInput,
-        displayName: feed.title || cleanInput,
-        handle:      `@${cleanInput}`,
+        id:          username,
+        displayName: feed.title || username,
+        handle:      `@${username}`,
         thumbnail:   feed.image?.url || null,
         platform:    "rumble"
       };
@@ -278,7 +336,6 @@ async function verifyChannel(platform, channelInput) {
     }
   }
 
-  // If platform doesn't match any known platform
   console.error(`Unknown platform: ${platform}`);
   return null;
 }
@@ -673,8 +730,9 @@ async function startMonitor(client) {
 // client = Discord bot client
 // guildId = Discord server ID
 // nickname = the nickname set when the channel was added
+// platform = the platform the channel is on
 // interaction = the Discord slash command interaction object
-async function refreshChannel(client, guildId, nickname, interaction) {
+async function refreshChannel(client, guildId, nickname, platform, interaction) {
   const data  = loadData();
   const guild = data[guildId];
 
@@ -687,28 +745,35 @@ async function refreshChannel(client, guildId, nickname, interaction) {
     return;
   }
 
-  // Search all platforms for a channel matching the nickname
-  let foundConfig   = null;
-  let foundPlatform = null;
+  // Find the channel on the specified platform
+  let foundConfig = null;
 
-  for (const platform of ["youtube", "twitch", "rumble"]) {
-    if (!guild.announcements[platform]) continue;
-
-    const match = guild.announcements[platform].find(
-      c => c.nickname.toLowerCase() === nickname.toLowerCase() // case insensitive
-    );
-
-    if (match) {
-      foundConfig   = match;
-      foundPlatform = platform;
-      break;
+  if (platform === "all") {
+    // Search all platforms if no specific platform given
+    for (const p of ["youtube", "twitch", "rumble"]) {
+      if (!guild.announcements[p]) continue;
+      const match = guild.announcements[p].find(
+        c => c.nickname.toLowerCase() === nickname.toLowerCase()
+      );
+      if (match) {
+        foundConfig = match;
+        platform    = p;
+        break;
+      }
+    }
+  } else {
+    // Search only the specified platform
+    if (guild.announcements[platform]) {
+      foundConfig = guild.announcements[platform].find(
+        c => c.nickname.toLowerCase() === nickname.toLowerCase()
+      );
     }
   }
 
-  // No channel found with that nickname
+  // No channel found with that nickname on that platform
   if (!foundConfig) {
     await interaction.reply({
-      content:   `❌ No channel found with the nickname **${nickname}**. Check your spelling or use /list to see all monitored channels.`,
+      content:   `❌ No channel found with the nickname **${nickname}** on ${platform}. Use /list to see all monitored channels.`,
       ephemeral: true
     });
     return;
@@ -755,12 +820,12 @@ async function refreshChannel(client, guildId, nickname, interaction) {
   saveData(data);
 
   await interaction.reply({
-    content:   `🔄 Checking **${foundConfig.displayName}** on ${foundPlatform} for updates...`,
+    content:   `🔄 Checking **${foundConfig.displayName}** on ${platform} for updates...`,
     ephemeral: true
   });
 
   // Force a check of this specific channel
-  await processAnnouncement(client, foundPlatform, foundConfig, data);
+  await processAnnouncement(client, platform, foundConfig, data);
 
   await interaction.editReply({
     content:   `✅ Refresh complete for **${foundConfig.displayName}**!`,
@@ -768,5 +833,9 @@ async function refreshChannel(client, guildId, nickname, interaction) {
   });
 }
 
+// Stores pending channel additions temporarily while waiting for confirmation
+// This avoids hitting Discord's 100 character select menu value limit
+const pendingAdds = new Map();
+
 // Export functions needed by bot.js
-module.exports = { startMonitor, refreshChannel, verifyChannel, PLATFORM_CONTENT_TYPES };
+module.exports = { startMonitor, refreshChannel, verifyChannel, parseChannelInput, PLATFORM_CONTENT_TYPES, pendingAdds };
