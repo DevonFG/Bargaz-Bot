@@ -3,7 +3,12 @@ const Parser = require("rss-parser"); // Parses Rumble's RSS feed
 const { loadData, saveData } = require("./storage");   // Read/write storage functions
 const { EmbedBuilder }       = require("discord.js");  // EmbedBuilder lets us create nicely formatted DC messages
 
-const parser = new Parser(); // create new instance of RSS parser
+// Create RSS parser with browser-like headers to avoid being blocked
+const parser = new Parser({
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  }
+});
 
 const CHECK_INTERVAL = 300000; // time in milliseconds (300000 = 5min), how often to check for new post
 
@@ -228,6 +233,7 @@ function parseChannelInput(platform, input) {
 // platform = "youtube"/"twitch"/"rumble"
 // channelInput = @handle, username, channel ID, or full URL
 async function verifyChannel(platform, channelInput) {
+
   // Parse the input into a clean identifier first
   const parsed = parseChannelInput(platform, channelInput);
 
@@ -307,6 +313,7 @@ async function verifyChannel(platform, channelInput) {
     // Currently using RSS feed to verify channel existence
     // TODO: Update this when Rumble releases an official public API
     // Devon has reached out to Rumble requesting API access
+
     try {
       const username = parsed.value;
       const rssUrl   = `https://rumble.com/c/${username}/rss`;
@@ -605,6 +612,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
     // Currently using RSS feed to check for new content
     // TODO: Update this when Rumble releases an official public API
     // Devon has reached out to Rumble requesting API access
+    
     try {
       let feed = null;
       try {
