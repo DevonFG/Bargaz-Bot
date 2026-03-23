@@ -355,61 +355,145 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
       const isPremieresEnabled = enabledTypes.includes("premieres");
 
       let latestContent = null;
-      let latestDate    = null;
 
-      // Check for videos, shorts, streams and premieres in one API call
-      if (isVideosEnabled || isShortsEnabled || isStreamsEnabled || isPremieresEnabled) {
-        const response = await axios.get("https://www.googleapis.com/youtube/v3/search", {
-          params: {
-            key:        process.env.YOUTUBE_API_KEY,
-            channelId:  channelConfig.channelId,
-            part:       "snippet",
-            order:      "date",
-            maxResults: 1,
-            type:       "video"
+      // STEP 1: Check RSS feed for new videos - completely free, no quota used
+      // YouTube RSS feed returns the 15 most recent uploads for any channel
+      try {
+        const rssUrl  = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelConfig.channelId}`;
+        const feed    = await parser.parseURL(rssUrl);
+
+        if (feed && feed.items && feed.items.length > 0) {
+          const latest  = feed.items[0]; // most recent upload
+          const videoId = latest.id?.split(":").pop() || // extract ID from yt:video:ID format
+                          latest.link?.split("v=")[1];   // or extract from URL
+
+          if (videoId) {
+            // Determine content type from RSS data
+            // RSS doesn't tell us if it's a short or premiere directly
+            // so we make our best guess from the title
+            let contentType = "video";
+
+            if (latest.title?.toLowerCase().includes("#shorts")) {
+              contentType = "short";
+            }
+
+            // Check if this content type is enabled
+            const typeEnabled = (
+              (contentType === "video" && isVideosEnabled) ||
+              (contentType === "short" && isShortsEnabled)
+            );
+
+            if (typeEnabled) {
+              latestContent = {
+                id:            videoId,
+                title:         latest.title,
+                channelName:   latest.author || channelConfig.displayName,
+                channelHandle: channelConfig.handle,
+                thumbnail:     `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`, // YouTube thumbnail URL pattern
+                url:           `https://www.youtube.com/watch?v=${videoId}`,
+                isLive:        false,
+                isEnded:       false,
+                contentType:   contentType
+              };
+            }
           }
-        });
+        }
+      } catch (rssError) {
+        // If RSS fails, log it but continue to API fallback
+        console.error(`RSS feed error for YouTube channel ${channelConfig.channelId}:`, rssError.message);
+      }
 
-        if (response.data.items && response.data.items.length > 0) {
-          const video     = response.data.items[0];
-          const videoDate = new Date(video.snippet.publishedAt);
+      // STEP 2: Check for live streams using the API only if streams are enabled
+      // This is the only place we spend quota - and only when checking for live streams
+      if (isStreamsEnabled) {
+        try {
+          const liveResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
+            params: {
+              key:        process.env.YOUTUBE_API_KEY,
+              channelId:  channelConfig.channelId,
+              part:       "snippet",
+              eventType:  "live",       // only returns currently live streams
+              type:       "video",
+              maxResults: 1
+            }
+          });
 
-          // Determine what type of content this is
-          let contentType = "video";
-          if (video.snippet.liveBroadcastContent === "live") {
-            contentType = "stream";
-          } else if (video.snippet.liveBroadcastContent === "upcoming") {
-            contentType = "premiere";
-          } else if (video.snippet.title.toLowerCase().includes("#shorts")) {
-            contentType = "short"; // YouTube doesn't directly label shorts so we check title
-          }
+          if (liveResponse.data.items && liveResponse.data.items.length > 0) {
+            const stream = liveResponse.data.items[0];
 
-          // Only include if the server has this content type enabled
-          const typeEnabled = (
-            (contentType === "video"    && isVideosEnabled)    ||
-            (contentType === "stream"   && isStreamsEnabled)   ||
-            (contentType === "premiere" && isPremieresEnabled) ||
-            (contentType === "short"    && isShortsEnabled)
-          );
-
-          if (typeEnabled) {
+            // Live stream found! This takes priority over any RSS content
             latestContent = {
-              id:            video.id.videoId,
-              title:         video.snippet.title,
-              channelName:   video.snippet.channelTitle,
+              id:            stream.id.videoId,
+              title:         stream.snippet.title,
+              channelName:   stream.snippet.channelTitle,
               channelHandle: channelConfig.handle,
-              thumbnail:     video.snippet.thumbnails.high.url,
-              url:           `https://www.youtube.com/watch?v=${video.id.videoId}`,
-              isLive:        contentType === "stream",
+              thumbnail:     stream.snippet.thumbnails.high.url,
+              url:           `https://www.youtube.com/watch?v=${stream.id.videoId}`,
+              isLive:        true,
               isEnded:       false,
-              contentType:   contentType
+              contentType:   "stream"
             };
-            latestDate = videoDate;
+          } else if (channelConfig.isCurrentlyLive) {
+            // Was live before but not anymore - stream ended
+            return {
+              id:            channelConfig.lastContentId,
+              title:         channelConfig.lastTitle,
+              channelName:   channelConfig.displayName,
+              channelHandle: channelConfig.handle,
+              thumbnail:     channelConfig.lastThumbnail,
+              url:           `https://www.youtube.com/watch?v=${channelConfig.lastContentId}`,
+              isLive:        false,
+              isEnded:       true,
+              contentType:   "stream"
+            };
           }
+        } catch (apiError) {
+          // If API call fails (e.g. quota exceeded), log it but don't crash
+          // RSS content will still be announced, just without live stream detection
+          console.error(`YouTube API error for channel ${channelConfig.channelId}:`, apiError.message);
         }
       }
 
-      // Check for community posts separately if enabled
+      // STEP 3: Check for premieres using API only if premieres are enabled
+      // Premieres can't be detected via RSS so we need the API for this
+      if (isPremieresEnabled) {
+        try {
+          const premiereResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
+            params: {
+              key:        process.env.YOUTUBE_API_KEY,
+              channelId:  channelConfig.channelId,
+              part:       "snippet",
+              eventType:  "upcoming",   // only returns upcoming/premiere videos
+              type:       "video",
+              maxResults: 1
+            }
+          });
+
+          if (premiereResponse.data.items && premiereResponse.data.items.length > 0) {
+            const premiere = premiereResponse.data.items[0];
+
+            // Only use premiere if it's newer than what RSS found
+            if (!latestContent || premiere.id.videoId !== latestContent.id) {
+              latestContent = {
+                id:            premiere.id.videoId,
+                title:         premiere.snippet.title,
+                channelName:   premiere.snippet.channelTitle,
+                channelHandle: channelConfig.handle,
+                thumbnail:     premiere.snippet.thumbnails.high.url,
+                url:           `https://www.youtube.com/watch?v=${premiere.id.videoId}`,
+                isLive:        false,
+                isEnded:       false,
+                contentType:   "premiere"
+              };
+            }
+          }
+        } catch (apiError) {
+          console.error(`YouTube premiere API error for channel ${channelConfig.channelId}:`, apiError.message);
+        }
+      }
+
+      // STEP 4: Check for community posts using API only if posts are enabled
+      // Posts can't be detected via RSS so we need the API for this
       // NOTE: YouTube community posts API is limited, only available for larger channels
       if (isPostsEnabled) {
         try {
@@ -423,12 +507,11 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
           });
 
           if (postResponse.data.items && postResponse.data.items.length > 0) {
-            const post     = postResponse.data.items[0];
-            const postDate = new Date(post.snippet.publishedAt);
+            const post = postResponse.data.items[0];
 
-            // Only use this post if it's newer than any video we already found
-            if (!latestDate || postDate > latestDate) {
-              if (post.snippet.type === "bulletinPost") {
+            if (post.snippet.type === "bulletinPost") {
+              // Only use post if we haven't found anything else newer
+              if (!latestContent) {
                 latestContent = {
                   id:            post.id,
                   title:         post.snippet.description || "New community post",
@@ -443,9 +526,9 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
               }
             }
           }
-        } catch (error) {
-          // Community posts API can fail for smaller channels, just skip silently
-          console.error("Error checking YouTube community posts:", error.message);
+        } catch (apiError) {
+          // Community posts API can fail for smaller channels, skip silently
+          console.error("Error checking YouTube community posts:", apiError.message);
         }
       }
 
