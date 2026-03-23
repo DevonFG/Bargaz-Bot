@@ -1,7 +1,7 @@
 const fs = require('fs'); //fs means file system, this lets us read/write files
 const path = require('path'); //helps build file paths correctly across different OS's
 
-const dataPath = path.join(__dirname, 'data.jason'); //__dirname is the folder for this file, this builds the full path to data.json in the same folder
+const dataPath = path.join(__dirname, 'data.json'); //__dirname is the folder for this file, this builds the full path to data.json in the same folder
 
 // Loads the data from data.json
 function loadData() {
