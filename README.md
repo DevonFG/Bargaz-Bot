@@ -7,3 +7,5 @@ update this quite reliably and take feedback from anyone who would like to give 
 If you want to give feedback, either email me at devon6608@gmail.com, DM me on Discord at RandomWolf08, or
 join my Discord server that, while used for other things, includes a section for BargazBot, including 
 support and feedback: https://discord.gg/6EnavGremg
+
+If you want to add the bot to your server, use this link: https://discord.com/oauth2/authorize?client_id=1472482809095393384
