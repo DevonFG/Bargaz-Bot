@@ -59,7 +59,6 @@ function strikethroughText(text) {
 /*
   Old YouTube-only checkChannel function kept for reference
   This has been replaced by the new combined checkChannel function below
-
   async function checkChannel(channelId) {
     try {
       const response = await axios.get("https://www.googleapis.com/youtube/v3/search", {
