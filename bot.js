@@ -186,28 +186,6 @@ const commands = [
         )
     ),
 
-  // /setcontenttypes - set which content types trigger announcements for a channel
-  new SlashCommandBuilder()
-    .setName("setcontenttypes")
-    .setDescription("Set which content types trigger announcements for a channel")
-    .addStringOption(option =>
-      option
-        .setName("platform")
-        .setDescription("Which platform is the channel on?")
-        .setRequired(true)
-        .addChoices(
-          { name: "YouTube", value: "youtube" },
-          { name: "Twitch",  value: "twitch"  },
-          { name: "Rumble",  value: "rumble"  }
-        )
-    )
-    .addStringOption(option =>
-      option
-        .setName("nickname")
-        .setDescription("The nickname of the channel to update")
-        .setRequired(true)
-    ),
-
   // /setrefreshpermission - control who can use /refresh
   new SlashCommandBuilder()
     .setName("setrefreshpermission")
@@ -724,67 +702,6 @@ client.on("interactionCreate", async interaction => {
       await interaction.reply({
         content:   `**${platformLabel} Monitored Channels:**\n${list}`,
         ephemeral: true
-      });
-    }
-
-    // ----------------------------------------------------------
-    // /setcontenttypes
-    // ----------------------------------------------------------
-    else if (commandName === "setcontenttypes") {
-      if (!isAdmin) {
-        await interaction.reply({
-          content:   "❌ You need to be an administrator to use this command.",
-          ephemeral: true
-        });
-        return;
-      }
-
-      const platform = interaction.options.getString("platform");
-      const nickname = interaction.options.getString("nickname");
-
-      if (!data[guildId].announcements[platform]) {
-        await interaction.reply({
-          content:   `❌ No ${platform} channels are being monitored in this server.`,
-          ephemeral: true
-        });
-        return;
-      }
-
-      const foundConfig = data[guildId].announcements[platform].find(
-        c => c.nickname.toLowerCase() === nickname.toLowerCase()
-      );
-
-      if (!foundConfig) {
-        await interaction.reply({
-          content:   `❌ No ${platform} channel found with the nickname **${nickname}**.`,
-          ephemeral: true
-        });
-        return;
-      }
-
-      const contentTypes = PLATFORM_CONTENT_TYPES[platform];
-      const currentTypes = foundConfig.enabledTypes || contentTypes;
-
-      const typeRow = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId(`set_content_types_${guildId}_${nickname}_${platform}`)
-          .setPlaceholder("Select which content types to announce")
-          .setMinValues(1)
-          .setMaxValues(contentTypes.length)
-          .addOptions(
-            contentTypes.map(type =>
-              new StringSelectMenuOptionBuilder()
-                .setLabel(type.charAt(0).toUpperCase() + type.slice(1))
-                .setValue(`contenttype|${type}|${nickname}|${platform}`)
-                .setDefault(currentTypes.includes(type))
-            )
-          )
-      );
-
-      await interaction.reply({
-        content:    `Select which content types should trigger announcements for **${foundConfig.displayName}** on ${platform}:`,
-        components: [typeRow],
-        ephemeral:  true
       });
     }
 
