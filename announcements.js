@@ -810,6 +810,8 @@ async function processAnnouncement(client, platform, channelConfig, guildData) {
     channelConfig.editHistory     = [];
     channelConfig.checksAfterPost = 0;
     channelConfig.isCurrentlyLive = latest.isLive;
+    channelConfig.postTime        = Date.now(); // Track when content was first posted
+    channelConfig.lastCheckTime   = Date.now(); // Track last check time
     saveData(guildData);
     return;
   }
@@ -917,7 +919,8 @@ async function startMonitor(client) {
 // nickname = the nickname set when the channel was added
 // platform = the platform the channel is on
 // interaction = the Discord slash command interaction object
-async function refreshChannel(client, guildId, nickname, platform, interaction) {
+// REPLACE the entire refreshChannel function (lines 845-951) in announcements.js with:
+async function refreshChannel(client, guildId, nickname, platform, requestedContentType, interaction) {
   const data  = loadData();
   const guild = data[guildId];
 
@@ -964,6 +967,29 @@ async function refreshChannel(client, guildId, nickname, platform, interaction) 
     return;
   }
 
+  // VALIDATE CONTENT TYPE if provided
+  if (requestedContentType) {
+    const validTypes = PLATFORM_CONTENT_TYPES[platform];
+    
+    if (!validTypes.includes(requestedContentType)) {
+      await interaction.reply({
+        content:   `❌ Content type **${requestedContentType}** is not available for ${platform}. Available types: ${validTypes.join(", ")}`,
+        ephemeral: true
+      });
+      return;
+    }
+
+    // Check if this content type is enabled for this channel
+    const enabledTypes = foundConfig.enabledTypes || PLATFORM_CONTENT_TYPES[platform];
+    if (!enabledTypes.includes(requestedContentType)) {
+      await interaction.reply({
+        content:   `❌ Content type **${requestedContentType}** is not enabled for **${foundConfig.displayName}}**. Enabled types: ${enabledTypes.join(", ")}`,
+        ephemeral: true
+      });
+      return;
+    }
+  }
+
   // Check 10 minute cooldown
   const now = Date.now();
   if (guild.announcements.lastRefresh &&
@@ -1004,19 +1030,186 @@ async function refreshChannel(client, guildId, nickname, platform, interaction) 
   guild.announcements.lastRefresh = now;
   saveData(data);
 
+  let contentTypeText = requestedContentType ? ` for **${requestedContentType}**` : "";
   await interaction.reply({
-    content:   `🔄 Checking **${foundConfig.displayName}** on ${platform} for updates...`,
+    content:   `🔄 Checking **${foundConfig.displayName}** on ${platform}${contentTypeText} for updates...`,
     ephemeral: true
   });
 
-  // Force a check of this specific channel
-  await processAnnouncement(client, platform, foundConfig, data);
-  await sleep(1000 + Math.random() * 2000);
+  // Get Discord channel to post in
+  const discordChannel = client.channels.cache.get(foundConfig.discordChannelId);
+  if (!discordChannel) {
+    await interaction.editReply({
+      content: `❌ Could not find the Discord channel to post announcements in. Channel may have been deleted.`
+    });
+    return;
+  }
 
-  await interaction.editReply({
-    content:   `✅ Refresh complete for **${foundConfig.displayName}**!`,
-    ephemeral: true
-  });
+  try {
+    // FORCE CHECK with optional content type filter
+    const enabledTypes = requestedContentType 
+      ? [requestedContentType]
+      : (foundConfig.enabledTypes || PLATFORM_CONTENT_TYPES[platform]);
+
+    const latest = await checkChannel(platform, foundConfig, enabledTypes);
+
+    // Nothing new found
+    if (!latest) {
+      await interaction.editReply({
+        content: `✅ Refresh complete! No new or updated content found for **${foundConfig.displayName}}**.`
+      });
+      return;
+    }
+
+    // STREAM ENDED - Update previous announcement with strikethrough
+    if (latest.isEnded && foundConfig.isCurrentlyLive) {
+      foundConfig.isCurrentlyLive = false;
+
+      if (foundConfig.lastMessageId) {
+        try {
+          const originalMessage = await discordChannel.messages.fetch(foundConfig.lastMessageId);
+          const mentions = foundConfig.mentions
+            ? foundConfig.mentions.map(id => `<@&${id}>`).join(" ")
+            : "";
+          const customMessage = foundConfig.customMessage
+            ? `${mentions} ${foundConfig.customMessage}`.trim()
+            : `${mentions} New content from ${foundConfig.displayName}!`.trim();
+
+          const embed = buildEmbed(
+            platform,
+            latest,
+            customMessage,
+            foundConfig.editHistory || [],
+            true // isEnded = true triggers strikethrough
+          );
+          await originalMessage.edit({ content: customMessage, embeds: [embed] });
+          
+          saveData(data);
+          await interaction.editReply({
+            content: `✅ Refresh complete! **${foundConfig.displayName}** stream has ended - announcement updated with strikethrough.`
+          });
+          return;
+        } catch (error) {
+          console.error("Error updating stream ended message:", error.message);
+        }
+      }
+    }
+
+    // NEW CONTENT - different from what's tracked
+    if (foundConfig.lastContentId !== latest.id) {
+      const mentions = foundConfig.mentions
+        ? foundConfig.mentions.map(id => `<@&${id}>`).join(" ")
+        : "";
+      const customMessage = foundConfig.customMessage
+        ? `${mentions} ${foundConfig.customMessage}`.trim()
+        : `${mentions} New content from ${foundConfig.displayName}!`.trim();
+
+      const embed = buildEmbed(platform, latest, customMessage);
+      const sent = await discordChannel.send({
+        content: customMessage,
+        embeds:  [embed]
+      });
+
+      // Save as if it was just found by the monitor
+      foundConfig.lastContentId   = latest.id;
+      foundConfig.lastTitle       = latest.title;
+      foundConfig.lastThumbnail   = latest.thumbnail;
+      foundConfig.lastMessageId   = sent.id;
+      foundConfig.editHistory     = [];
+      foundConfig.checksAfterPost = 0;
+      foundConfig.isCurrentlyLive = latest.isLive;
+      foundConfig.lastCheckTime   = now; // Track when we last checked
+      
+      saveData(data);
+      await interaction.editReply({
+        content: `✅ Refresh complete! Posted new announcement for **${foundConfig.displayName}}**.`
+      });
+      return;
+    }
+
+    // SAME CONTENT - Check for title/thumbnail changes within 30 minute window
+    
+    // Check if we're still within the 30 minute edit window
+    const lastCheckTime = foundConfig.lastCheckTime || now;
+    const timeSincePost = now - (foundConfig.postTime || lastCheckTime);
+    
+    if (timeSincePost > 1800000) { // 30 minutes in milliseconds
+      await interaction.editReply({
+        content: `✅ Refresh complete! **${foundConfig.displayName}}** content is unchanged and outside the 30-minute edit window.`
+      });
+      return;
+    }
+
+    // Check if title or thumbnail has changed
+    const titleChanged     = foundConfig.lastTitle     !== latest.title;
+    const thumbnailChanged = foundConfig.lastThumbnail !== latest.thumbnail;
+
+    if (!titleChanged && !thumbnailChanged) {
+      await interaction.editReply({
+        content: `✅ Refresh complete! **${foundConfig.displayName}}** content is unchanged.`
+      });
+      return;
+    }
+
+    // CHANGES DETECTED - Update the announcement
+    const timestamp = formatTimestamp(new Date());
+
+    if (!foundConfig.editHistory) foundConfig.editHistory = [];
+    foundConfig.editHistory.push({ timestamp });
+
+    const mentions = foundConfig.mentions
+      ? foundConfig.mentions.map(id => `<@&${id}>`).join(" ")
+      : "";
+    const customMessage = foundConfig.customMessage
+      ? `${mentions} ${foundConfig.customMessage}`.trim()
+      : `${mentions} New content from ${foundConfig.displayName}!`.trim();
+
+    const embed = buildEmbed(
+      platform,
+      latest,
+      customMessage,
+      foundConfig.editHistory,
+      false // not ended
+    );
+
+    if (foundConfig.lastMessageId) {
+      try {
+        const originalMessage = await discordChannel.messages.fetch(foundConfig.lastMessageId);
+        await originalMessage.edit({ content: customMessage, embeds: [embed] });
+      } catch {
+        // Message not found, send a new one
+        const sent = await discordChannel.send({
+          content: customMessage,
+          embeds:  [embed]
+        });
+        foundConfig.lastMessageId = sent.id;
+      }
+    } else {
+      const sent = await discordChannel.send({
+        content: customMessage,
+        embeds:  [embed]
+      });
+      foundConfig.lastMessageId = sent.id;
+    }
+
+    foundConfig.lastTitle       = latest.title;
+    foundConfig.lastThumbnail   = latest.thumbnail;
+    foundConfig.lastCheckTime   = now;
+    foundConfig.postTime        = foundConfig.postTime || now; // Track original post time
+    foundConfig.checksAfterPost = 0; // Reset check counter
+    
+    saveData(data);
+
+    await interaction.editReply({
+      content: `✅ Refresh complete! **${foundConfig.displayName}}** announcement updated with new title/thumbnail at ${timestamp}.`
+    });
+
+  } catch (error) {
+    console.error("Error during refresh:", error.message);
+    await interaction.editReply({
+      content: `❌ An error occurred during refresh: ${error.message}`
+    });
+  }
 }
 
 // Stores pending channel additions temporarily while waiting for confirmation

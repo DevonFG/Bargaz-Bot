@@ -151,7 +151,7 @@ const commands = [
   // /refresh - force recheck a specific channel by nickname and platform
   new SlashCommandBuilder()
     .setName("refresh")
-    .setDescription("Force a recheck of a specific monitored channel")
+    .setDescription("Force a recheck of a specific monitored channel for new/updated content")
     .addStringOption(option =>
       option
         .setName("platform")
@@ -168,6 +168,12 @@ const commands = [
         .setName("nickname")
         .setDescription("The nickname of the channel to refresh")
         .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName("contenttype")
+        .setDescription("The type of content to check for (optional - omit to check all types)")
+        .setRequired(false)
     ),
 
   // /list - list all monitored channels filtered by platform
@@ -664,7 +670,7 @@ client.on("interactionCreate", async interaction => {
     else if (commandName === "refresh") {
       const platform = interaction.options.getString("platform");
       const nickname = interaction.options.getString("nickname");
-      await refreshChannel(client, guildId, nickname, platform, interaction);
+      await refreshChannel(client, guildId, nickname, platform, contentType, interaction);
     }
 
     // ----------------------------------------------------------
