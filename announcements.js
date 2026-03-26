@@ -240,45 +240,48 @@ async function verifyChannel(platform, channelInput) {
 
   if (platform === "youtube") {
     try {
-      let response;
+      let channelId = null;
+      let response = null;
 
+      // If it's already a channel ID (starts with UC and is 24 chars), use it directly
       if (parsed.type === "id") {
-        // Look up directly by channel ID
-        response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
-          params: {
-            key:  process.env.YOUTUBE_API_KEY,
-            id:   parsed.value,
-            part: "snippet"
-          }
-        });
+        channelId = parsed.value;
       } else {
-        // Look up by handle
-        response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
-          params: {
-            key:        process.env.YOUTUBE_API_KEY,
-            q:          '@${parsed.value}',
-            part:       "snippet",
-            type:       "channel",
-            maxResults: 1
-          }
-        });
-        
-        // Convert search results to channel format
-        if (response.data.items && response.data.items.length > 0) {
-          const channelId = response.data.items[0].id.channelId;
-          
-          // Fetch full channel details
-          response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
+        // For handles/usernames, we need to search for the channel
+        try {
+          const searchResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
             params: {
-              key:  process.env.YOUTUBE_API_KEY,
-              id:   channelId,
-              part: "snippet"
+              key:        process.env.YOUTUBE_API_KEY,
+              q:          parsed.value,  // search for the username/handle as-is
+              part:       "snippet",
+              type:       "channel",
+              maxResults: 1
             }
           });
+
+          if (searchResponse.data.items && searchResponse.data.items.length > 0) {
+            channelId = searchResponse.data.items[0].id.channelId;
+          } else {
+            return null; // No results found
+          }
+        } catch (searchError) {
+          console.error("YouTube search error:", searchError.message);
+          return null;
         }
       }
 
-      if (!response.data.items || response.data.items.length === 0) return null;
+      // Now fetch the full channel details using the channel ID
+      if (channelId) {
+        response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
+          params: {
+            key:  process.env.YOUTUBE_API_KEY,
+            id:   channelId,
+            part: "snippet"
+          }
+        });
+      }
+
+      if (!response || !response.data.items || response.data.items.length === 0) return null;
 
       const channel = response.data.items[0];
 
