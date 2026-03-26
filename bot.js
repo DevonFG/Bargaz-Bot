@@ -882,6 +882,12 @@ client.on("interactionCreate", async interaction => {
         c => c.nickname.toLowerCase() === nickname.toLowerCase()
       );
 
+      channelConfig.lastRumbleFail = Date.now();
+
+      if (channelConfig.lastRumbleFail && Date.now() - channelConfig.lastRumbleFail < 600000) {
+        return null; // skip for 10 minutes
+      }
+
       if (!channelConfig) {
         await interaction.update({
           content:    "❌ Could not find that channel. Please try again.",

@@ -322,12 +322,32 @@ async function verifyChannel(platform, channelInput) {
       let feed = null;
 
       try {
-        feed = await parser.parseURL(rssUrl); // try /c/ path first
-      } catch {
-        feed = await parser.parseURL(altUrl); // fall back to /user/ path
+        const response = await axios.get(rssUrl, {
+          headers: {
+           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+           "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+           "Connection": "keep-alive"
+         },
+         timeout: 10000
+        });
+
+        const feed = await parser.parseString(response.data);
       }
 
-      if (!feed) return null;
+      async function fetchRSS(url, retries = 3) {
+        for (let i = 0; i < retries; i++) {
+          try {
+            const res = await axios.get(url, { timeout: 10000 });
+            return await parser.parseString(res.data);
+          } catch (err) {
+            if (i === retries - 1) throw err;
+            await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
+          }
+        }
+      }
+
+      feed = await fetchRSS(rssUrl);
 
       return {
         id:          username,
@@ -790,6 +810,11 @@ async function processAnnouncement(client, platform, channelConfig, guildData) {
   }
 }
 
+// Sleep function for adding delays when needed
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Starts the monitor for all platforms - runs forever on a 5 minute timer
 // client = Discord bot client, passed in from bot.js
 async function startMonitor(client) {
@@ -810,6 +835,7 @@ async function startMonitor(client) {
 
         for (const channelConfig of guild.announcements[platform]) {
           await processAnnouncement(client, platform, channelConfig, data);
+          await sleep(1000 + Math.random() * 2000);
         }
       }
     }
@@ -916,6 +942,7 @@ async function refreshChannel(client, guildId, nickname, platform, interaction) 
 
   // Force a check of this specific channel
   await processAnnouncement(client, platform, foundConfig, data);
+  await sleep(1000 + Math.random() * 2000);
 
   await interaction.editReply({
     content:   `✅ Refresh complete for **${foundConfig.displayName}**!`,
