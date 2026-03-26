@@ -3,6 +3,7 @@ const Parser = require("rss-parser"); // Parses Rumble's RSS feed
 const { loadData, saveData } = require("./storage");   // Read/write storage functions
 const { EmbedBuilder }       = require("discord.js");  // EmbedBuilder lets us create nicely formatted DC messages
 const cheerio = require("cheerio") // HTML Parsing for Rumble
+const quotaTracker = require("./youtube-quota");
 
 // Create RSS parser with browser-like headers to avoid being blocked
 const parser = new Parser({
@@ -395,9 +396,48 @@ async function verifyChannel(platform, channelInput) {
 // enabledTypes = array of content types this server wants announced
 // e.g. ["videos", "shorts", "streams"]
 async function checkChannel(platform, channelConfig, enabledTypes) {
-  if (platform === "youtube") {
+    if (platform === "youtube") {
     try {
-      // Determine which content types are enabled for this server
+      // CHECK IF WE'RE IN RSS-ONLY MODE
+      if (quotaTracker.isYoutubeRssOnly()) {
+        console.log(`YouTube API quota critical - using RSS-only for ${channelConfig.displayName}`);
+        
+        // STEP 1: Check RSS feed for new videos ONLY
+        try {
+          const rssUrl  = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelConfig.channelId}`;
+          const feed    = await parser.parseURL(rssUrl);
+
+          if (feed && feed.items && feed.items.length > 0) {
+            const latest  = feed.items[0];
+            const videoId = latest.id?.split(":").pop() || latest.link?.split("v=")[1];
+
+            if (videoId) {
+              let contentType = "video";
+              if (latest.title?.toLowerCase().includes("#shorts")) {
+                contentType = "short";
+              }
+
+              return {
+                id:            videoId,
+                title:         latest.title,
+                channelName:   latest.author || channelConfig.displayName,
+                channelHandle: channelConfig.handle,
+                thumbnail:     `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+                url:           `https://www.youtube.com/watch?v=${videoId}`,
+                isLive:        false,
+                isEnded:       false,
+                contentType:   contentType
+              };
+            }
+          }
+        } catch (rssError) {
+          console.error(`RSS feed error for YouTube channel ${channelConfig.channelId}:`, rssError.message);
+        }
+        
+        return null; // No RSS content found
+      }
+
+      // NORMAL MODE - USE API WITH QUOTA TRACKING
       const isPostsEnabled     = enabledTypes.includes("posts");
       const isVideosEnabled    = enabledTypes.includes("videos");
       const isShortsEnabled    = enabledTypes.includes("shorts");
@@ -406,28 +446,22 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
 
       let latestContent = null;
 
-      // STEP 1: Check RSS feed for new videos - completely free, no quota used
-      // YouTube RSS feed returns the 15 most recent uploads for any channel
+      // STEP 1: Check RSS feed for new videos - free
       try {
         const rssUrl  = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelConfig.channelId}`;
         const feed    = await parser.parseURL(rssUrl);
 
         if (feed && feed.items && feed.items.length > 0) {
-          const latest  = feed.items[0]; // most recent upload
-          const videoId = latest.id?.split(":").pop() || // extract ID from yt:video:ID format
-                          latest.link?.split("v=")[1];   // or extract from URL
+          const latest  = feed.items[0];
+          const videoId = latest.id?.split(":").pop() || latest.link?.split("v=")[1];
 
           if (videoId) {
-            // Determine content type from RSS data
-            // RSS doesn't tell us if it's a short or premiere directly
-            // so we make our best guess from the title
             let contentType = "video";
 
             if (latest.title?.toLowerCase().includes("#shorts")) {
               contentType = "short";
             }
 
-            // Check if this content type is enabled
             const typeEnabled = (
               (contentType === "video" && isVideosEnabled) ||
               (contentType === "short" && isShortsEnabled)
@@ -439,7 +473,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
                 title:         latest.title,
                 channelName:   latest.author || channelConfig.displayName,
                 channelHandle: channelConfig.handle,
-                thumbnail:     `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`, // YouTube thumbnail URL pattern
+                thumbnail:     `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
                 url:           `https://www.youtube.com/watch?v=${videoId}`,
                 isLive:        false,
                 isEnded:       false,
@@ -449,12 +483,10 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
           }
         }
       } catch (rssError) {
-        // If RSS fails, log it but continue to API fallback
         console.error(`RSS feed error for YouTube channel ${channelConfig.channelId}:`, rssError.message);
       }
 
-      // STEP 2: Check for live streams using the API only if streams are enabled
-      // This is the only place we spend quota - and only when checking for live streams
+      // STEP 2: Check for live streams using API (costs quota)
       if (isStreamsEnabled) {
         try {
           const liveResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
@@ -462,16 +494,17 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
               key:        process.env.YOUTUBE_API_KEY,
               channelId:  channelConfig.channelId,
               part:       "snippet",
-              eventType:  "live",       // only returns currently live streams
+              eventType:  "live",
               type:       "video",
               maxResults: 1
             }
           });
 
+          quotaTracker.updateQuotaUsage(100); // search.list costs ~100 units
+
           if (liveResponse.data.items && liveResponse.data.items.length > 0) {
             const stream = liveResponse.data.items[0];
 
-            // Live stream found! This takes priority over any RSS content
             latestContent = {
               id:            stream.id.videoId,
               title:         stream.snippet.title,
@@ -484,7 +517,6 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
               contentType:   "stream"
             };
           } else if (channelConfig.isCurrentlyLive) {
-            // Was live before but not anymore - stream ended
             return {
               id:            channelConfig.lastContentId,
               title:         channelConfig.lastTitle,
@@ -498,14 +530,11 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
             };
           }
         } catch (apiError) {
-          // If API call fails (e.g. quota exceeded), log it but don't crash
-          // RSS content will still be announced, just without live stream detection
           console.error(`YouTube API error for channel ${channelConfig.channelId}:`, apiError.message);
         }
       }
 
-      // STEP 3: Check for premieres using API only if premieres are enabled
-      // Premieres can't be detected via RSS so we need the API for this
+      // STEP 3: Check for premieres using API (costs quota)
       if (isPremieresEnabled) {
         try {
           const premiereResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
@@ -513,16 +542,17 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
               key:        process.env.YOUTUBE_API_KEY,
               channelId:  channelConfig.channelId,
               part:       "snippet",
-              eventType:  "upcoming",   // only returns upcoming/premiere videos
+              eventType:  "upcoming",
               type:       "video",
               maxResults: 1
             }
           });
 
+          quotaTracker.updateQuotaUsage(100); // search.list costs ~100 units
+
           if (premiereResponse.data.items && premiereResponse.data.items.length > 0) {
             const premiere = premiereResponse.data.items[0];
 
-            // Only use premiere if it's newer than what RSS found
             if (!latestContent || premiere.id.videoId !== latestContent.id) {
               latestContent = {
                 id:            premiere.id.videoId,
@@ -542,9 +572,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
         }
       }
 
-      // STEP 4: Check for community posts using API only if posts are enabled
-      // Posts can't be detected via RSS so we need the API for this
-      // NOTE: YouTube community posts API is limited, only available for larger channels
+      // STEP 4: Check for community posts using API (costs quota)
       if (isPostsEnabled) {
         try {
           const postResponse = await axios.get("https://www.googleapis.com/youtube/v3/activities", {
@@ -556,11 +584,12 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
             }
           });
 
+          quotaTracker.updateQuotaUsage(1); // activities.list costs 1 unit
+
           if (postResponse.data.items && postResponse.data.items.length > 0) {
             const post = postResponse.data.items[0];
 
             if (post.snippet.type === "bulletinPost") {
-              // Only use post if we haven't found anything else newer
               if (!latestContent) {
                 latestContent = {
                   id:            post.id,
@@ -577,7 +606,6 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
             }
           }
         } catch (apiError) {
-          // Community posts API can fail for smaller channels, skip silently
           console.error("Error checking YouTube community posts:", apiError.message);
         }
       }

@@ -19,6 +19,7 @@ const {
 const { startMonitor, refreshChannel, verifyChannel, parseChannelInput, PLATFORM_CONTENT_TYPES, pendingAdds } = require("./announcements"); // import announcement functions
 const { loadData, saveData } = require("./storage"); // import storage functions
 const { loadConfig, saveConfig } = require("./config"); // import config functions
+const quotaTracker = require("./youtube-quota");
 
 // Set up the Discord client with the permissions it needs
 const client = new Client({
@@ -31,6 +32,22 @@ const client = new Client({
 
 // Define all slash commands
 const commands = [
+
+  // /youtube_rss_mode - toggle RSS-only mode for YouTube
+  new SlashCommandBuilder()
+    .setName("youtube_rss_mode")
+    .setDescription("Toggle RSS-only mode for YouTube announcements")
+    .addStringoption( option =>
+      option
+        .setName("mode")
+        .setDescription("Enable or disable RSS-only mode")
+        .setRequired(true)
+        .addChoices(
+          { name: "Enable - Use RSS only, skip API calls", value: "enable" },
+          { name: "Disable - Use API normally", value: "disable"}
+        )
+    ),
+
   // /ping - basic test command
   new SlashCommandBuilder()
     .setName("ping")
@@ -257,6 +274,10 @@ client.once("clientReady", async () => {
 
   // Start the announcement monitor for all platforms
   startMonitor(client);
+
+  // Start monitoring the YouTube API Quota limit
+  quotaTracker.startQuotaMonitoring(client);
+
 });
 
 // When the bot joins a new server
@@ -371,9 +392,84 @@ client.on("interactionCreate", async interaction => {
     const isAdmin = interaction.member.permissions.has("Administrator");
 
     // ----------------------------------------------------------
+    // /youtube_rss_mode - owner only
+    // ----------------------------------------------------------
+    if (commandName === "youtube_rss_mode") {
+      // Only the bot owner's server can use this command
+      if (guildId !== process.env.OWNER_SERVER_ID) {
+        await interaction.reply({
+          content:   "❌ This command can only be used in the bot's support server.",
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (!isAdmin) {
+        await interaction.reply({
+          content:   "❌ You need to be an administrator to use this command.",
+          ephemeral: true
+        });
+        return;
+      }
+
+      const mode = interaction.options.getString("mode");
+      const quotaTracker = require("./youtube-quota");
+
+      // Get current tracker state
+      const tracker = quotaTracker.getEstimatedQuotaRemaining();
+
+      if (mode === "enable") {
+        // Enable RSS-only mode
+        tracker.rssOnlyMode = true;
+        tracker.manualRssMode = true; // Track that admin manually set this
+        tracker.manualRssModeUntil = new Date(); // Current time + will reset at midnight
+        saveData(data);
+
+        const embed = new EmbedBuilder()
+          .setTitle("🔴 YouTube RSS-Only Mode ENABLED")
+          .setColor(0xFF0000)
+          .addFields(
+            { name: "Status", value: "YouTube API calls are now disabled", inline: true },
+            { name: "Videos/Shorts", value: "✅ RSS feeds will still work", inline: true },
+            { name: "Live Streams", value: "❌ Disabled (requires API)", inline: true },
+            { name: "Premieres", value: "❌ Disabled (requires API)", inline: true },
+            { name: "Community Posts", value: "❌ Disabled (requires API)", inline: true },
+            { name: "Reset Time", value: "Midnight UTC tomorrow (or when quota recovers)", inline: false }
+          )
+          .setFooter({ text: "Manually enabled by " + interaction.user.username });
+
+        await interaction.reply({
+          embeds: [embed],
+          ephemeral: false
+        });
+      } else {
+        // Disable RSS-only mode
+        tracker.rssOnlyMode = false;
+        tracker.manualRssMode = false;
+        tracker.estimatedRemaining = quotaTracker.QUOTA_CONFIG.maxDailyQuota; // Reset to max
+        saveData(data);
+
+        const embed = new EmbedBuilder()
+          .setTitle("🟢 YouTube RSS-Only Mode DISABLED")
+          .setColor(0x00FF00)
+          .addFields(
+            { name: "Status", value: "YouTube API is now enabled", inline: true },
+            { name: "Quota Reset", value: "Estimated at maximum capacity", inline: true },
+            { name: "All Features", value: "✅ API calls, live streams, premieres, and posts re-enabled", inline: false }
+          )
+          .setFooter({ text: "Manually disabled by " + interaction.user.username });
+
+        await interaction.reply({
+          embeds: [embed],
+          ephemeral: false
+        });
+      }
+    }
+
+    // ----------------------------------------------------------
     // /ping
     // ----------------------------------------------------------
-    if (commandName === "ping") {
+    else if (commandName === "ping") {
       await interaction.reply("Pong!");
     }
 
