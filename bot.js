@@ -833,6 +833,14 @@ client.on("interactionCreate", async interaction => {
 
       const { platform, verified, nickname, discordChannelId } = pending;
 
+      // INITIALIZE SERVER DATA if it doesn't exist
+      if (!data[guildId]) {
+        data[guildId] = {};
+      }
+      if (!data[guildId].announcements) {
+        data[guildId].announcements = {};
+      }
+
       if (!data[guildId].announcements[platform]) {
         data[guildId].announcements[platform] = [];
       }
@@ -853,7 +861,9 @@ client.on("interactionCreate", async interaction => {
         lastMessageId:    null,
         editHistory:      [],
         checksAfterPost:  0,
-        isCurrentlyLive:  false
+        isCurrentlyLive:  false,
+        postTime:         null,
+        lastCheckTime:    null
       });
 
       saveData(data);
