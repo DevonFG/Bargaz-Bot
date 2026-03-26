@@ -2,6 +2,7 @@ const axios  = require("axios");      // HTTP requests to APIs
 const Parser = require("rss-parser"); // Parses Rumble's RSS feed
 const { loadData, saveData } = require("./storage");   // Read/write storage functions
 const { EmbedBuilder }       = require("discord.js");  // EmbedBuilder lets us create nicely formatted DC messages
+const cheerio = require("cheerio") // HTML Parsing for Rumble
 
 // Create RSS parser with browser-like headers to avoid being blocked
 const parser = new Parser({
@@ -309,51 +310,54 @@ async function verifyChannel(platform, channelInput) {
   }
 
   if (platform === "rumble") {
-    // NOTE: Rumble has no official API as of March 2026
-    // Currently using RSS feed to verify channel existence
-    // TODO: Update this when Rumble releases an official public API
-    // Devon has reached out to Rumble requesting API access
-
     try {
       const username = parsed.value;
-      const rssUrl   = `https://rumble.com/c/${username}/rss`;
-      const altUrl   = `https://rumble.com/user/${username}/rss`;
+      
+      // Try both URL formats
+      const urls = [
+        `https://rumble.com/c/${username}`,
+        `https://rumble.com/user/${username}`
+      ];
 
-      let feed = null;
+      let page = null;
+      let workingUrl = null;
 
-      try {
-        const response = await axios.get(rssUrl, {
-          headers: {
-           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-           "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-           "Connection": "keep-alive"
-         },
-         timeout: 10000
-        });
-
-        const feed = await parser.parseString(response.data);
-      }
-
-      async function fetchRSS(url, retries = 3) {
-        for (let i = 0; i < retries; i++) {
-          try {
-            const res = await axios.get(url, { timeout: 10000 });
-            return await parser.parseString(res.data);
-          } catch (err) {
-            if (i === retries - 1) throw err;
-            await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
-          }
+      for (const url of urls) {
+        try {
+          const response = await axios.get(url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            timeout: 10000
+          });
+          page = response.data;
+          workingUrl = url;
+          break;
+        } catch (err) {
+          continue;
         }
       }
 
-      feed = await fetchRSS(rssUrl);
+      if (!page) return null;
+
+      // Parse HTML to extract channel info
+      const $ = cheerio.load(page);
+      
+      // Channel name is usually in h1 or meta tags
+      const channelName = $('h1').first().text().trim() || 
+                         $('meta[property="og:title"]').attr('content') || 
+                         username;
+      
+      // Channel thumbnail/avatar
+      const thumbnail = $('img[alt="avatar"], img[class*="avatar"]').first().attr('src') || 
+                       $('meta[property="og:image"]').attr('content') || 
+                       null;
 
       return {
         id:          username,
-        displayName: feed.title || username,
+        displayName: channelName,
         handle:      `@${username}`,
-        thumbnail:   feed.image?.url || null,
+        thumbnail:   thumbnail,
         platform:    "rumble"
       };
     } catch (error) {
@@ -572,94 +576,159 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
       const token = await getTwitchToken();
       if (!token) return null;
 
-      // Check if the streamer is currently live
-      const response = await axios.get("https://api.twitch.tv/helix/streams", {
-        params: { user_id: channelConfig.channelId },
-        headers: {
-          "Client-ID":     process.env.TWITCH_CLIENT_ID,
-          "Authorization": `Bearer ${token}`
+      // STEP 1: Try API first - more reliable and real-time
+      try {
+        const response = await axios.get("https://api.twitch.tv/helix/streams", {
+          params: { user_id: channelConfig.channelId },
+          headers: {
+            "Client-ID":     process.env.TWITCH_CLIENT_ID,
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        const streamData = response.data.data;
+
+        // If no data returned, streamer is offline
+        if (!streamData || streamData.length === 0) {
+          // Return an ended state if they were previously live
+          if (channelConfig.isCurrentlyLive) {
+            return {
+              id:            channelConfig.lastContentId,
+              title:         channelConfig.lastTitle,
+              channelName:   channelConfig.displayName,
+              channelHandle: channelConfig.handle,
+              thumbnail:     channelConfig.lastThumbnail,
+              url:           `https://twitch.tv/${channelConfig.handle.replace("@", "")}`,
+              isLive:        false,
+              isEnded:       true, // signals that stream just ended
+              contentType:   "stream"
+            };
+          }
+          return null; // wasn't live before either, nothing to report
         }
-      });
 
-      const streamData = response.data.data;
+        const stream = streamData[0];
 
-      // If no data returned, streamer is offline
-      if (!streamData || streamData.length === 0) {
-        // Return an ended state if they were previously live
-        if (channelConfig.isCurrentlyLive) {
+        // Replace Twitch thumbnail size placeholders with actual dimensions
+        const thumbnail = stream.thumbnail_url
+          .replace("{width}",  "1280")
+          .replace("{height}", "720");
+
+        return {
+          id:            stream.id,
+          title:         stream.title,
+          channelName:   stream.user_name,
+          channelHandle: channelConfig.handle,
+          thumbnail:     thumbnail,
+          url:           `https://twitch.tv/${stream.user_login}`,
+          isLive:        true,
+          isEnded:       false,
+          contentType:   "stream"
+        };
+
+      } catch (apiError) {
+        // If API fails, try RSS feed as fallback
+        console.warn(`Twitch API error for channel ${channelConfig.channelId}, trying RSS fallback:`, apiError.message);
+        
+        try {
+          const rssUrl = `https://www.twitch.tv/feeds/videos.xml?channel_login=${channelConfig.handle.replace("@", "")}`;
+          const feed = await parser.parseURL(rssUrl);
+
+          if (!feed || !feed.items || feed.items.length === 0) return null;
+
+          const latest = feed.items[0];
+          const isLive = latest.title?.toLowerCase().includes("live") || false;
+
           return {
-            id:            channelConfig.lastContentId,
-            title:         channelConfig.lastTitle,
-            channelName:   channelConfig.displayName,
+            id:            latest.guid || latest.link,
+            title:         latest.title,
+            channelName:   feed.title || channelConfig.displayName,
             channelHandle: channelConfig.handle,
-            thumbnail:     channelConfig.lastThumbnail,
-            url:           `https://twitch.tv/${channelConfig.handle.replace("@", "")}`,
-            isLive:        false,
-            isEnded:       true, // signals that stream just ended
+            thumbnail:     latest.enclosure?.url || null,
+            url:           latest.link,
+            isLive:        isLive,
+            isEnded:       false,
             contentType:   "stream"
           };
+        } catch (rssError) {
+          console.error(`Twitch RSS fallback also failed:`, rssError.message);
+          return null;
         }
-        return null; // wasn't live before either, nothing to report
       }
-
-      const stream = streamData[0];
-
-      // Replace Twitch thumbnail size placeholders with actual dimensions
-      const thumbnail = stream.thumbnail_url
-        .replace("{width}",  "1280")
-        .replace("{height}", "720");
-
-      return {
-        id:            stream.id,
-        title:         stream.title,
-        channelName:   stream.user_name,
-        channelHandle: channelConfig.handle,
-        thumbnail:     thumbnail,
-        url:           `https://twitch.tv/${stream.user_login}`,
-        isLive:        true,
-        isEnded:       false,
-        contentType:   "stream"
-      };
 
     } catch (error) {
       console.error(`Error checking Twitch channel ${channelConfig.channelId}:`, error.message);
       return null;
     }
+
   }
 
   if (platform === "rumble") {
-    // NOTE: Rumble has no official API as of March 2026
-    // Currently using RSS feed to check for new content
-    // TODO: Update this when Rumble releases an official public API
-    // Devon has reached out to Rumble requesting API access
-    
     try {
-      let feed = null;
-      try {
-        feed = await parser.parseURL(`https://rumble.com/c/${channelConfig.channelId}/rss`);
-      } catch {
-        feed = await parser.parseURL(`https://rumble.com/user/${channelConfig.channelId}/rss`);
+      const username = channelConfig.channelId;
+      
+      // Try both URL formats
+      const urls = [
+        `https://rumble.com/c/${username}`,
+        `https://rumble.com/user/${username}`
+      ];
+
+      let page = null;
+      for (const url of urls) {
+        try {
+          const response = await axios.get(url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            timeout: 10000
+          });
+          page = response.data;
+          break; // Success, exit loop
+        } catch (err) {
+          // Try next URL
+          continue;
+        }
       }
 
-      if (!feed || !feed.items || feed.items.length === 0) return null;
+      if (!page) return null;
 
-      const latest      = feed.items[0]; // most recent item
-      const isLive      = latest.title?.toLowerCase().includes("live") || false;
-      const contentType = isLive ? "stream" : "video";
+      // Parse HTML to find latest video/stream
+      const $ = cheerio.load(page);
+      
+      // Rumble's video/stream tiles are usually in div.video-item or similar
+      // Look for the first video/stream item on the channel page
+      const videoItem = $('[class*="video"], [class*="item"]').first();
+      
+      if (!videoItem.length) return null;
 
-      // Skip if this content type isn't enabled for this server
-      if (!enabledTypes.includes(contentType)) return null;
+      // Extract video/stream details
+      const title = videoItem.find('a[title]').attr('title') || 
+                   videoItem.find('h3, .title').text().trim();
+      const link = videoItem.find('a[href*="/v/"]').attr('href') || 
+                  videoItem.find('a[href*="/embed/"]').attr('href');
+      const thumbnail = videoItem.find('img').attr('src') || null;
+
+      // Detect if it's a live stream
+      const isLive = title?.toLowerCase().includes("live") || 
+                    videoItem.find('[class*="live"]').length > 0;
+      
+      // Create unique ID from link
+      const videoId = link ? link.split('/').pop()?.split('?')[0] : null;
+
+      if (!videoId || !link) return null;
+
+      const fullUrl = link.startsWith('http') ? link : `https://rumble.com${link}`;
 
       return {
-        id:            latest.guid || latest.link,
-        title:         latest.title,
-        channelName:   feed.title || channelConfig.displayName,
+        id:            videoId,
+        title:         title || "New content",
+        channelName:   channelConfig.displayName,
         channelHandle: channelConfig.handle,
-        thumbnail:     latest.enclosure?.url || null,
-        url:           latest.link,
+        thumbnail:     thumbnail,
+        url:           fullUrl,
         isLive:        isLive,
         isEnded:       false,
-        contentType:   contentType
+        contentType:   isLive ? "stream" : "video"
       };
 
     } catch (error) {
@@ -746,8 +815,8 @@ async function processAnnouncement(client, platform, channelConfig, guildData) {
   }
 
   // CASE 3: Same content - check for changes within 10 minute window
-  // For non-live content stop checking after 2 checks (10 minutes)
-  if (channelConfig.checksAfterPost >= 2 && !latest.isLive) { return; }
+  // For non-live content stop checking after 6 checks (30 minutes)
+  if (channelConfig.checksAfterPost >= 6 && !latest.isLive) { return; }
 
   // For live streams keep checking every interval until stream ends
   if (!latest.isLive) {

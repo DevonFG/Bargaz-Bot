@@ -388,15 +388,6 @@ client.on("interactionCreate", async interaction => {
       const nickname       = interaction.options.getString("nickname");
       const discordChannel = interaction.options.getChannel("discordchannel");
 
-      // Handle Rumble coming soon
-      if (platform === "rumble") {
-        await interaction.reply({
-          content:   "🟢 Rumble support is coming soon! We have reached out to Rumble requesting official API access. Check back later!",
-          ephemeral: true
-        });
-        return;
-      }
-
       // Check if this nickname is already in use on this platform in this server
       const platformChannels = data[guildId].announcements[platform] || [];
       const nicknameExists   = platformChannels.find(
