@@ -37,7 +37,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("youtube_rss_mode")
     .setDescription("Toggle RSS-only mode for YouTube announcements")
-    .addStringoption( option =>
+    .addStringOption( option =>
       option
         .setName("mode")
         .setDescription("Enable or disable RSS-only mode")
