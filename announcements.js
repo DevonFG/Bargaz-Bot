@@ -255,11 +255,27 @@ async function verifyChannel(platform, channelInput) {
         // Look up by handle
         response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
           params: {
-            key:       process.env.YOUTUBE_API_KEY,
-            forUsername: parsed.value,
-            part:      "snippet"
+            key:        process.env.YOUTUBE_API_KEY,
+            q:          '@${parsed.value}',
+            part:       "snippet",
+            type:       "channel",
+            maxResults: 1
           }
         });
+        
+        // Convert search results to channel format
+        if (response.data.items && response.data.items.length > 0) {
+          const channelId = response.data.items[0].id.channelId;
+          
+          // Fetch full channel details
+          response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
+            params: {
+              key:  process.env.YOUTUBE_API_KEY,
+              id:   channelId,
+              part: "snippet"
+            }
+          });
+        }
       }
 
       if (!response.data.items || response.data.items.length === 0) return null;
