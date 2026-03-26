@@ -256,7 +256,7 @@ async function verifyChannel(platform, channelInput) {
         response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
           params: {
             key:       process.env.YOUTUBE_API_KEY,
-            forHandle: parsed.value,
+            forUsername: parsed.value,
             part:      "snippet"
           }
         });
