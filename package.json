@@ -1,6 +1,6 @@
 {
   "name": "bargaz-bot",
-  "version": "26.4.1",
+  "version": "26.4.2",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"

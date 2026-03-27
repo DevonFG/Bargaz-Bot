@@ -1,4 +1,4 @@
-# Changelog - bot token changed when repo was made public
+# Changelog
 
 ### Format: YY.FEATURE.PATCH
 - YY = The year the feature was introduced
@@ -6,7 +6,11 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
-## v26.4.1 - Mar 26 - NOTE: Versioning *was not changed* in GitHub until this update
+## v26.4.2 - Mar 27
+- Edited v26.2.3 to include GitHub Repo being made public
+- Edited v26.4.1 to say Mar 27 since it was past midnight when change wa made
+
+## v26.4.1 - Mar 27 - NOTE: Versioning *was not changed* in GitHub until this update
 Added CHANGELOG.md
 - All logs from this log prior was added
 - Created versioning system
@@ -106,7 +110,9 @@ Did a test commit from my PC
 Added bot invite link to README.md
 
 ## v26.2.3 - Mar 22
-Created README.md with basic info like contact information and discord server link
+- Created README.md with basic info like contact information and discord server link
+- Made GitHub Repository Public
+- Changed bot token (Unsure of exact timing, but changed this at some point, and I think it was with this update)
 
 ## v26.2.2 - Mar 22
 Debugging new announcements feature
