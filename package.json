@@ -1,6 +1,6 @@
 {
   "name": "bargaz-bot",
-  "version": "1.0.0",
+  "version": "26.4.1",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -13,3 +13,4 @@
     "cheerio": "^1.0.0-rc.12"
   }
 }
+
