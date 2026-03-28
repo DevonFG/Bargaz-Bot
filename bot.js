@@ -19,7 +19,8 @@ const {
 const { startMonitor, refreshChannel, verifyChannel, parseChannelInput, PLATFORM_CONTENT_TYPES, pendingAdds } = require("./announcements"); // import announcement functions
 const { loadData, saveData } = require("./storage"); // import storage functions
 const { loadConfig, saveConfig } = require("./config"); // import config functions
-const quotaTracker = require("./youtube-quota");
+const quotaTracker = require("./youtube-quota"); 
+const { logAction, logWarning, logServerEvent, moveServerLogChannel } = require("./logging"); // import logging functions
 
 // Set up the Discord client with the permissions it needs
 const client = new Client({
@@ -231,15 +232,42 @@ const commands = [
         .setRequired(false)
     ),
 
-  // /setannouncementchannel - set which channel receives bot announcements in this server
+  // /editautocreatedchannels - change where announcements and/or logs are sent
   new SlashCommandBuilder()
-    .setName("setannouncementchannel")
-    .setDescription("Set which channel receives Bargaz Bot announcements in this server")
-    .addChannelOption(option =>
-      option
-        .setName("channel")
-        .setDescription("The channel to receive bot announcements")
-        .setRequired(true)
+    .setName("editautocreatedchannels")
+    .setDescription("Configure where announcements and/or server logs are sent")
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("announcements")
+        .setDescription("Set the channel for Bargaz Bot announcements")
+        .addChannelOption(option =>
+          option
+            .setName("channel")
+            .setDescription("The channel to receive bot announcements")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("logs")
+        .setDescription("Set the channel for server logs")
+        .addChannelOption(option =>
+          option
+            .setName("channel")
+            .setDescription("The channel to receive server logs")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("both")
+        .setDescription("Use one channel for both announcements and server logs")
+        .addChannelOption(option =>
+          option
+            .setName("channel")
+            .setDescription("The channel for both announcements and logs")
+            .setRequired(true)
+        )
     ),
 
   // /setwelcomemessage - owner only, sets the welcome message for all new servers
@@ -292,17 +320,28 @@ client.on("guildCreate", async (guild) => {
       reason: "Bargaz Bot announcements channel"
     });
 
-    // Save the new channel as the default announcement channel for this server
+    // Create #bargazbot-logs channel in the new server
+    const logChannel = await guild.channels.create({
+      name: "bargazbot-logs",
+      reason: "Bargaz Bot server logs"
+    });
+
+    // Save the channels
     if (!data[guild.id]) data[guild.id] = {};
     data[guild.id].botAnnouncementChannelId = announcementChannel.id;
+    data[guild.id].serverLogChannelId = logChannel.id;
     saveData(data);
 
     // Send the welcome message
     await announcementChannel.send(config.welcomeMessage);
 
-    console.log(`Joined server: ${guild.name} - created #bargazbot-announcements`);
+    // Log to owner's continuous log
+    await logAction(client, "Bot Joined Server", `Joined **${guild.name}** with ${guild.memberCount} members`, guild.id);
+
+    console.log(`Joined server: ${guild.name} - created #bargazbot-announcements and #bargazbot-logs`);
   } catch (error) {
     console.error(`Error setting up new server ${guild.name}:`, error.message);
+    await logWarning(client, "Server Setup Error", `Failed to set up server ${guild.name}: ${error.message}`, "server_setup");
   }
 });
 
@@ -504,6 +543,17 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
+      // Log the action if verification fails
+      if (!verified) {
+        await logServerEvent(client, guildId, "Announcement Add Failed", 
+          `Failed to verify channel: ${channelInput} on ${platform}`, 
+          interaction.user.id, "error");
+        await interaction.editReply({
+          content: `❌ Could not find that channel on ${platform}. Please check the input and try again. You can use a @handle, username, channel ID, or full URL.`
+        });
+        return;
+      }
+
       // Tell the user we're verifying - this can take a moment
       await interaction.deferReply({ ephemeral: true });
 
@@ -559,6 +609,11 @@ client.on("interactionCreate", async interaction => {
           { name: "Content types", value: PLATFORM_CONTENT_TYPES[platform].join(", "),    inline: false }
         )
         .setFooter({ text: "Use the menu below to confirm or cancel." });
+        
+        // Log successful add to server log
+        await logServerEvent(client, guildId, "Announcement Added", 
+         `Added **${verified.displayName}** (${nickname}) on ${platform} → <#${discordChannel.id}>`,
+        interaction.user.id, "success");
 
       if (verified.thumbnail) previewEmbed.setThumbnail(verified.thumbnail);
 
@@ -604,6 +659,12 @@ client.on("interactionCreate", async interaction => {
           content:   `❌ No ${platform} channels are being monitored in this server.`,
           ephemeral: true
         });
+
+        // Log the deletion
+        await logServerEvent(client, guildId, "Announcement Deleted", 
+          `Removed **${foundConfig.displayName}** (${nickname}) from ${platform}`,
+          interaction.user.id, "warning");
+
         return;
       }
 
@@ -834,9 +895,9 @@ client.on("interactionCreate", async interaction => {
     }
 
     // ----------------------------------------------------------
-    // /setannouncementchannel
+    // /editautocreatedchannels
     // ----------------------------------------------------------
-    else if (commandName === "setannouncementchannel") {
+    else if (commandName === "editautocreatedchannels") {
       if (!isAdmin) {
         await interaction.reply({
           content:   "❌ You need to be an administrator to use this command.",
@@ -845,15 +906,72 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
-      const channel = interaction.options.getChannel("channel");
+      const subcommand = interaction.options.getSubcommand();
+      const selectedChannel = interaction.options.getChannel("channel");
 
-      data[guildId].botAnnouncementChannelId = channel.id;
-      saveData(data);
+      if (subcommand === "announcements") {
+        // Change ONLY announcements channel
+        const oldChannelId = data[guildId].botAnnouncementChannelId;
+        data[guildId].botAnnouncementChannelId = selectedChannel.id;
+        saveData(data);
 
-      await interaction.reply({
-        content:   `✅ Bargaz Bot announcements will now be posted in <#${channel.id}>.`,
-        ephemeral: true
-      });
+        await logServerEvent(
+          client,
+          guildId,
+          "Announcement Channel Changed",
+          `Moved from <#${oldChannelId || "unknown"}> → <#${selectedChannel.id}>`,
+          interaction.user.id,
+          "info"
+        );
+
+        await interaction.reply({
+          content: `✅ Bargaz Bot announcements will now be posted in <#${selectedChannel.id}>.`,
+          ephemeral: true
+        });
+      }
+      else if (subcommand === "logs") {
+        // Change ONLY logs channel
+        const oldChannelId = data[guildId].serverLogChannelId;
+        data[guildId].serverLogChannelId = selectedChannel.id;
+        saveData(data);
+
+        await logServerEvent(
+          client,
+          guildId,
+          "Log Channel Changed",
+          `Moved from <#${oldChannelId || "unknown"}> → <#${selectedChannel.id}>`,
+          interaction.user.id,
+          "info"
+        );
+
+        await interaction.reply({
+          content: `✅ Server logs will now be posted in <#${selectedChannel.id}>.`,
+          ephemeral: true
+        });
+      }
+      else if (subcommand === "both") {
+        // Use same channel for BOTH
+        const oldAnnouncementChannelId = data[guildId].botAnnouncementChannelId;
+        const oldLogChannelId = data[guildId].serverLogChannelId;
+
+        data[guildId].botAnnouncementChannelId = selectedChannel.id;
+        data[guildId].serverLogChannelId = selectedChannel.id;
+        saveData(data);
+
+        await logServerEvent(
+          client,
+          guildId,
+          "Announcements & Logs Channel Changed",
+          `Both announcements and logs now sent to <#${selectedChannel.id}>\nPreviously: Announcements <#${oldAnnouncementChannelId || "unknown"}> | Logs <#${oldLogChannelId || "unknown"}>`,
+          interaction.user.id,
+          "info"
+        );
+
+        await interaction.reply({
+          content: `✅ Both announcements and server logs will now be posted in <#${selectedChannel.id}>.`,
+          ephemeral: true
+        });
+      }
     }
 
     // ----------------------------------------------------------

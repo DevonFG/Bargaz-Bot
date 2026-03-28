@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { loadData, saveData } = require("./storage");
+const { logWarning } = require("./logging");
 
 // Quota tracking configuration
 const QUOTA_CONFIG = {
@@ -90,11 +91,20 @@ function updateQuotaUsage(unitsUsed) {
   return tracker;
 }
 
-// Send warning to announcement channel
+// Send warning to announcement channel AND owner's warning log
 async function sendQuotaWarning(client, tracker, severity) {
   const data = loadData();
   
-  // Send warning to all servers that have announcements enabled
+  const severityEmoji = severity === "critical" ? "🚨" : "⚠️";
+  const title = `${severityEmoji} YouTube API Quota ${severity === "critical" ? "CRITICAL" : "Warning"}`;
+  const message = severity === "critical"
+    ? `⚠️ YouTube API quota is critically low! Switching to RSS-only mode.`
+    : `⚠️ YouTube API quota is running low. Monitor usage.`;
+  
+  // Send to owner's warning log channel
+  await logWarning(client, title, message, "youtube_quota");
+  
+  // Send to all servers that have announcements enabled
   for (const guildId in data) {
     const guild = data[guildId];
     if (!guild.announcements || !guild.botAnnouncementChannelId) continue;
@@ -103,19 +113,18 @@ async function sendQuotaWarning(client, tracker, severity) {
       const channel = client.channels.cache.get(guild.botAnnouncementChannelId);
       if (!channel) continue;
 
-      const severityEmoji = severity === "critical" ? "🚨" : "⚠️";
-      const color = severity === "critical" ? 0xFF0000 : 0xFFFF00; // Red or Yellow
+      const color = severity === "critical" ? 0xFF0000 : 0xFFFF00;
       
-      const embed = {
-        color: color,
-        title: `${severityEmoji} YouTube API Quota Warning`,
-        description: severity === "critical"
+      const embed = new (require("discord.js")).EmbedBuilder()
+        .setColor(color)
+        .setTitle(`${severityEmoji} YouTube API Quota Warning`)
+        .setDescription(severity === "critical"
           ? "🔴 **CRITICAL:** YouTube API quota is critically low! Switching to RSS-only mode for YouTube announcements."
-          : "🟡 **WARNING:** YouTube API quota is running low. Please monitor usage.",
-        fields: [
+          : "🟡 **WARNING:** YouTube API quota is running low. Please monitor usage.")
+        .addFields(
           {
             name: "Estimated Remaining Units",
-            value: `${Math.max(0, tracker.estimatedRemaining)} / ${QUOTA_CONFIG.maxDailyQuota}`,
+            value: `${Math.max(0, tracker.estimatedRemaining)} / 10000`,
             inline: true
           },
           {
@@ -130,11 +139,10 @@ async function sendQuotaWarning(client, tracker, severity) {
               : "Consider monitoring your API usage or requesting a quota increase from Google.",
             inline: false
           }
-        ],
-        footer: {
+        )
+        .setFooter({
           text: `Last Updated: ${new Date(tracker.lastUpdated).toLocaleString()}`
-        }
-      };
+        });
 
       await channel.send({ embeds: [embed] });
     } catch (error) {

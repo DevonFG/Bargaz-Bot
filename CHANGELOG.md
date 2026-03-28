@@ -6,6 +6,30 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+## v26.5.0 - Mar 28
+Added logging system
+- logging.js file created
+- .env now includes 2 different logging channels within my discord server
+    - normal log channel for all logs within all servers (this exists soley to see any recurring issues and monitoring)
+    - warning log channel for any warnings or issues that are logged
+- Logs when:
+    - Bot joins new server
+    - Announcements are added
+    - Announcements are deleted
+    - Announcements are modified
+    - Verification attempts fail
+    - YouTube API is close to out/is out and moving to RSS only
+    - Server setup errors
+    - NOTE: This will be expanded, but I wanted to add the feature at all before adjusting it
+- Logging channel types:
+    - ALL logs (private in my server)
+    - Warning logs (private in my server)
+    - Admin logs (created in all servers the bot is added to)
+- Changed the announcements channel command to edit all auto created channels
+    - includes option to move the announcements channel
+    - includes option to move the logs channel
+    - includes option to move both channels to the same spot
+
 ## v26.4.2 - Mar 27
 - Edited v26.2.3 to include GitHub Repo being made public
 - Edited v26.4.1 to say Mar 27 since it was past midnight when change wa made
