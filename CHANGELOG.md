@@ -6,6 +6,17 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+## v26.5.1 - Apr 4
+Changed logging.js
+- Merged logAction, logWarning, and logServerEvent into 1 function
+    - All server logs go to server log channel
+    - All warning and error logs go to my warning logs channel
+    - All logs go to my full logs channel
+- Added a lot more console usage
+- Updated parameters
+- Removed cooldown system for the all logs channel
+- Changed code format and comments to be more my style
+
 ## v26.5.0 - Mar 28
 Added logging system
 - logging.js file created

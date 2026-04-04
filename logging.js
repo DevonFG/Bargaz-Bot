@@ -1,96 +1,37 @@
-const fs = require("fs");
-const path = require("path");
 const { EmbedBuilder } = require("discord.js");
 const { loadData, saveData } = require("./storage");
 
-// Track warning cooldowns to only show every 10 minutes
-const warningCooldowns = new Map();
-const WARNING_COOLDOWN = 600000; // 10 minutes in milliseconds
-
-/**
- * Send a log to the bot owner's continuous log channel (all bot activity)
- */
-async function logAction(client, action, details, guildId = null, userId = null) {
+// Send a log to the respecive log channel
+// client = discord bot client
+// title = log title (I.e: "Bot Joined Server")
+// message = description/details of the log
+// guildId = server ID where the action happened
+// userId = user who triggered the action
+// type = severety level ("info", "success", "warning", "error") | Defaults as "info"
+async function logAction(client, title, message, guildId, userId = "unknown", type = "info") {
   try {
-    const continuousChannelId = process.env.OWNER_LOG_CHANNEL_ID;
-    if (!continuousChannelId) return;
 
-    const channel = client.channels.cache.get(continuousChannelId);
-    if (!channel) return;
+    // ====================================
+    // Individual Server Log Channel Config
+    // ====================================
 
-    const embed = new EmbedBuilder()
-      .setTitle(`📝 ${action}`)
-      .setDescription(details)
-      .setColor(0x5865F2)
-      .setTimestamp();
-
-    if (guildId) {
-      const guild = client.guilds.cache.get(guildId);
-      embed.addFields({ name: "Server", value: guild ? guild.name : guildId, inline: true });
-    }
-
-    if (userId) {
-      const user = await client.users.fetch(userId).catch(() => null);
-      embed.addFields({ name: "User", value: user ? user.username : userId, inline: true });
-    }
-
-    await channel.send({ embeds: [embed] });
-  } catch (error) {
-    console.error("Error logging action:", error);
-  }
-}
-
-/**
- * Send a warning to the bot owner's warning log channel (throttled every 10 minutes)
- */
-async function logWarning(client, title, message, category = "general") {
-  try {
-    const warningChannelId = process.env.OWNER_WARNING_CHANNEL_ID;
-    if (!warningChannelId) return;
-
-    const cooldownKey = `${category}`;
-    const now = Date.now();
-    const lastWarningTime = warningCooldowns.get(cooldownKey);
-
-    if (lastWarningTime && now - lastWarningTime < WARNING_COOLDOWN) {
-      console.warn(`⚠️ [COOLDOWN] ${title}: ${message}`);
-      return;
-    }
-
-    warningCooldowns.set(cooldownKey, now);
-
-    const channel = client.channels.cache.get(warningChannelId);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle(`⚠️ ${title}`)
-      .setDescription(message)
-      .setColor(0xFFA500)
-      .setTimestamp()
-      .setFooter({ text: `Next alert in 10 minutes` });
-
-    await channel.send({ embeds: [embed] });
-  } catch (error) {
-    console.error("Error logging warning:", error);
-  }
-}
-
-/**
- * Send a per-server log (appears in that server's log channel)
- */
-async function logServerEvent(client, guildId, action, details, userId, type = "info") {
-  try {
     const data = loadData();
 
+    // Create empty object if no data exists yet
     if (!data[guildId]) {
       data[guildId] = {};
     }
 
-    let logChannelId = data[guildId].serverLogChannelId;
+    // Saves individual server channel log ID
+    let serverChannelId = data[guildId].serverLogChannelId;
 
-    if (!logChannelId) {
+    // If no saved log channel, create one
+    if (!serverChannelId) {
       const guild = client.guilds.cache.get(guildId);
-      if (!guild) return;
+      if (!guild) {
+        console.error("Error creating log channel: guild not found");
+        return;
+      }
 
       try {
         const logChannel = await guild.channels.create({
@@ -99,8 +40,8 @@ async function logServerEvent(client, guildId, action, details, userId, type = "
           type: 0
         });
 
-        logChannelId = logChannel.id;
-        data[guildId].serverLogChannelId = logChannelId;
+        serverChannelId = logChannel.id;
+        data[guildId].serverLogChannelId = serverChannelId;
         saveData(data);
 
         console.log(`Created log channel for server ${guild.name}`);
@@ -110,8 +51,21 @@ async function logServerEvent(client, guildId, action, details, userId, type = "
       }
     }
 
-    const channel = client.channels.cache.get(logChannelId);
-    if (!channel) return;
+    // ================================
+    // Other Server Log Channels Config
+    // ================================
+
+    const ownerLogChannelID = process.env.OWNER_LOG_CHANNEL_ID;
+    const ownerWarningChannelID = process.env.OWNER_WARNING_CHANNEL_ID;
+
+    if (!ownerLogChannelID) {
+      console.error("Cannot send error log, missing owner log channel ID");
+      return;
+    }
+    
+    // ===============
+    // Everything Else
+    // ===============
 
     const colors = {
       info: 0x5865F2,
@@ -126,28 +80,62 @@ async function logServerEvent(client, guildId, action, details, userId, type = "
       warning: "⚠️",
       error: "❌"
     };
+    
+    // Convert channel ID to a usable format (object)
+    const ownerLogChannel = client.channels.cache.get(ownerLogChannelID);
+    const ownerWarningChannel = ownerWarningChannelID ? client.channels.cache.get(ownerWarningChannelID) : null;
+    const serverChannel = client.channels.cache.get(serverChannelId);
 
-    const user = await client.users.fetch(userId).catch(() => null);
-
+    if (!ownerLogChannel) {
+      console.error("Cannot send error log, cannot convert the ownerLogChannelID");
+      return;
+    }
+    
+    // Create embed
     const embed = new EmbedBuilder()
-      .setTitle(`${icons[type] || "📝"} ${action}`)
-      .setDescription(details)
-      .setColor(colors[type] || 0x5865F2)
-      .addFields(
+      .setTitle(`${icons[type] || "📝"} ${title}`)
+      .setDescription(message)
+      .setColor(colors[type] || 0xFFC107)
+      .setTimestamp();
+    
+    // Add user info if provided
+    if (userId && userId !== "unknown") {
+      const user = await client.users.fetch(userId).catch(() => null);
+      embed.addFields(
         { name: "Initiated by", value: user ? `<@${userId}>` : userId, inline: true },
         { name: "User ID", value: userId, inline: true }
-      )
-      .setTimestamp();
+      );
+    }
+    
+    // If the guild ID was given, use that
+    if (guildId) {
+      const guild = client.guilds.cache.get(guildId);
+      embed.addFields({ 
+        name: "Server", 
+        value: guild ? guild.name : guildId, 
+        inline: true 
+      });
+    }
 
-    await channel.send({ embeds: [embed] });
+    // Send to server's log channel
+    if (serverChannel) {
+      await serverChannel.send({ embeds: [embed] });
+    }
+
+    // Send to owner warning channel if type is warning or error
+    if ((type === "warning" || type === "error") && ownerWarningChannel) {
+      await ownerWarningChannel.send({ embeds: [embed] });
+    }
+
+    // Send to owner log channel
+    await ownerLogChannel.send({ embeds: [embed] });
+
   } catch (error) {
-    console.error("Error logging server event:", error);
+    console.error("Error logging action:", error);
   }
 }
 
-/**
- * Move a server's log channel to a different channel
- */
+//Move a server's log channel to a different channel
 async function moveServerLogChannel(client, guildId, newChannelId, userId) {
   try {
     const data = loadData();
@@ -184,8 +172,5 @@ async function moveServerLogChannel(client, guildId, newChannelId, userId) {
 
 module.exports = {
   logAction,
-  logWarning,
-  logServerEvent,
-  moveServerLogChannel,
-  WARNING_COOLDOWN
+  moveServerLogChannel
 };
