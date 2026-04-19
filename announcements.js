@@ -5,7 +5,7 @@ const { EmbedBuilder }       = require("discord.js");  // EmbedBuilder lets us c
 const cheerio = require("cheerio") // HTML Parsing for Rumble
 const quotaTracker = require("./youtube-quota");
 
-// Create RSS parser with browser-like headers to avoid being blocked
+// Create RSS parser with headers
 const parser = new Parser({
   headers: {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -62,38 +62,6 @@ function formatTimestamp(date) {
 function strikethroughText(text) {
   return `~~${text}~~`;
 }
-
-/*
-  Old YouTube-only checkChannel function kept for reference
-  This has been replaced by the new combined checkChannel function below
-  async function checkChannel(channelId) {
-    try {
-      const response = await axios.get("https://www.googleapis.com/youtube/v3/search", {
-        params: {
-          key:        process.env.YOUTUBE_API_KEY,
-          channelId:  channelId,
-          part:       "snippet",
-          order:      "date",
-          maxResults: 1,
-          type:       "video"
-        }
-      });
-      if (!response.data.items || response.data.items.length === 0) return null;
-      const video = response.data.items[0];
-      return {
-        videoId:     video.id.videoId,
-        title:       video.snippet.title,
-        channelName: video.snippet.channelTitle,
-        thumbnail:   video.snippet.thumbnails.high.url,
-        url:         `https://www.youtube.com/watch?v=${video.id.videoId}`,
-        isLive:      video.snippet.liveBroadcastContent === "live"
-      };
-    } catch (error) {
-      console.error(`Error checking YouTube channel ${channelId}`, error.message);
-      return null;
-    }
-  }
-*/
 
 // Builds the Discord embed card for any platform
 // platform = "youtube"/"twitch"/"rumble"
@@ -217,6 +185,10 @@ function parseChannelInput(platform, input) {
   }
 
   if (platform === "rumble") {
+    
+    console.error("Rumble called in parseChannelInput");
+    return null;
+    /*
     // Handle Rumble URLs
     if (trimmed.includes("rumble.com")) {
       // https://rumble.com/c/username or https://rumble.com/user/username
@@ -225,7 +197,9 @@ function parseChannelInput(platform, input) {
     }
 
     // @handle or plain username
-    return { type: "username", value: trimmed.replace("@", "") };
+    return { type: "username", value: trimmed.replace("@", "") };\
+    */
+
   }
 
   return { type: "username", value: trimmed.replace("@", "") };
@@ -330,7 +304,10 @@ async function verifyChannel(platform, channelInput) {
   }
 
   if (platform === "rumble") {
-    try {
+
+    console.error(" Rumble called in verifyChannel");
+    return null;
+    /* try {
       const username = parsed.value;
       
       // Try both URL formats
@@ -382,8 +359,8 @@ async function verifyChannel(platform, channelInput) {
       };
     } catch (error) {
       console.error("Error verifying Rumble channel:", error.message);
-      return null;
-    }
+      return null; 
+    } */
   }
 
   console.error(`Unknown platform: ${platform}`);
@@ -711,6 +688,10 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
   }
 
   if (platform === "rumble") {
+    
+    console.error("Rumble called in checkChannel")
+    return null;
+    /*
     try {
       const username = channelConfig.channelId;
       
@@ -782,6 +763,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
       console.error(`Error checking Rumble channel ${channelConfig.channelId}:`, error.message);
       return null;
     }
+    */
   }
 
   console.error(`Unknown platform: ${platform}`);

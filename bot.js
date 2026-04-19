@@ -65,8 +65,8 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "YouTube", value: "youtube" },
-          { name: "Twitch",  value: "twitch"  },
-          { name: "Rumble",  value: "rumble"  } // coming soon
+          { name: "Twitch",  value: "twitch"  }//,
+          //{ name: "Rumble",  value: "rumble"  } 
         )
     )
     .addStringOption(option =>
@@ -99,8 +99,8 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "YouTube", value: "youtube" },
-          { name: "Twitch",  value: "twitch"  },
-          { name: "Rumble",  value: "rumble"  }
+          { name: "Twitch",  value: "twitch"  }//,
+          //{ name: "Rumble",  value: "rumble"  }
         )
     )
     .addStringOption(option =>
@@ -121,8 +121,8 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "YouTube", value: "youtube" },
-          { name: "Twitch",  value: "twitch"  },
-          { name: "Rumble",  value: "rumble"  }
+          { name: "Twitch",  value: "twitch"  }//,
+          //{ name: "Rumble",  value: "rumble"  }
         )
     )
     .addStringOption(option =>
@@ -143,8 +143,8 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "YouTube", value: "youtube" },
-          { name: "Twitch",  value: "twitch"  },
-          { name: "Rumble",  value: "rumble"  }
+          { name: "Twitch",  value: "twitch"  }//,
+          //{ name: "Rumble",  value: "rumble"  }
         )
     )
     .addStringOption(option =>
@@ -177,8 +177,8 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "YouTube", value: "youtube" },
-          { name: "Twitch",  value: "twitch"  },
-          { name: "Rumble",  value: "rumble"  }
+          { name: "Twitch",  value: "twitch"  }//,
+          //{ name: "Rumble",  value: "rumble"  }
         )
     )
     .addStringOption(option =>
@@ -205,8 +205,8 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "YouTube", value: "youtube" },
-          { name: "Twitch",  value: "twitch"  },
-          { name: "Rumble",  value: "rumble"  }
+          { name: "Twitch",  value: "twitch"  }//,
+          //{ name: "Rumble",  value: "rumble"  }
         )
     ),
 

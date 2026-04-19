@@ -6,6 +6,10 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+## v26.5.2 - Apr 19
+Commented out all Rumble code
+Awaiting responce from Rumble support.
+
 ## v26.5.1 - Apr 4
 Changed logging.js
 - Merged logAction, logWarning, and logServerEvent into 1 function
