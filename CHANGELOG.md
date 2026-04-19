@@ -6,6 +6,12 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+## v26.5.4 - Apr 19
+Readded v26.5.3 log with a note
+
+## v26.5.3 - Apr 19 - Skipped version due to rollback/cherry-pick (error arose after change)
+Moved the verification log action till after verification in bot.js
+
 ## v26.5.2 - Apr 19
 Commented out all Rumble code
 Awaiting responce from Rumble support.
