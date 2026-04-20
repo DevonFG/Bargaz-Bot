@@ -123,6 +123,7 @@ async function getTwitchToken() {
   try {
     // Request a new token from Twitch using client credentials
     const response = await axios.post("https://id.twitch.tv/oauth2/token", null, {
+      timeout: 10000,
       params: {
         client_id:     process.env.TWITCH_CLIENT_ID,
         client_secret: process.env.TWITCH_CLIENT_SECRET,
@@ -225,6 +226,7 @@ async function verifyChannel(platform, channelInput) {
         // For handles/usernames, we need to search for the channel
         try {
           const searchResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
+            timeout: 10000,
             params: {
               key:        process.env.YOUTUBE_API_KEY,
               q:          parsed.value,  // search for the username/handle as-is
@@ -248,6 +250,7 @@ async function verifyChannel(platform, channelInput) {
       // Now fetch the full channel details using the channel ID
       if (channelId) {
         response = await axios.get("https://www.googleapis.com/youtube/v3/channels", {
+          timeout: 10000,
           params: {
             key:  process.env.YOUTUBE_API_KEY,
             id:   channelId,
@@ -279,6 +282,7 @@ async function verifyChannel(platform, channelInput) {
       if (!token) return null;
 
       const response = await axios.get("https://api.twitch.tv/helix/users", {
+        timeout: 10000,
         params: { login: parsed.value }, // always a username for Twitch
         headers: {
           "Client-ID":     process.env.TWITCH_CLIENT_ID,
@@ -467,6 +471,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
       if (isStreamsEnabled) {
         try {
           const liveResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
+            timeout: 10000,
             params: {
               key:        process.env.YOUTUBE_API_KEY,
               channelId:  channelConfig.channelId,
@@ -515,6 +520,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
       if (isPremieresEnabled) {
         try {
           const premiereResponse = await axios.get("https://www.googleapis.com/youtube/v3/search", {
+            timeout: 10000,
             params: {
               key:        process.env.YOUTUBE_API_KEY,
               channelId:  channelConfig.channelId,
@@ -553,6 +559,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
       if (isPostsEnabled) {
         try {
           const postResponse = await axios.get("https://www.googleapis.com/youtube/v3/activities", {
+            timeout: 10000,
             params: {
               key:        process.env.YOUTUBE_API_KEY,
               channelId:  channelConfig.channelId,
@@ -603,6 +610,7 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
       // STEP 1: Try API first - more reliable and real-time
       try {
         const response = await axios.get("https://api.twitch.tv/helix/streams", {
+          timeout: 10000,
           params: { user_id: channelConfig.channelId },
           headers: {
             "Client-ID":     process.env.TWITCH_CLIENT_ID,
