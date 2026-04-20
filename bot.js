@@ -543,6 +543,9 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
+      // Verify the channel actually exists on the platform
+      const verified = await verifyChannel(platform, channelInput);
+
       // Log the action if verification fails
       if (!verified) {
         await logServerEvent(client, guildId, "Announcement Add Failed", 
@@ -556,9 +559,6 @@ client.on("interactionCreate", async interaction => {
 
       // Tell the user we're verifying - this can take a moment
       await interaction.deferReply({ ephemeral: true });
-
-      // Verify the channel actually exists on the platform
-      const verified = await verifyChannel(platform, channelInput);
 
       if (!verified) {
         await interaction.editReply({
