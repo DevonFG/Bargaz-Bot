@@ -545,9 +545,11 @@ client.on("interactionCreate", async interaction => {
 
       // Tell the user we're verifying - this can take a moment
       await interaction.deferReply({ ephemeral: true });
+      console.log("deferred, starting  verifyChannel");
 
       // Verify the channel actually exists on the platform
       const verified = await verifyChannel(platform, channelInput);
+      console.log("verifyChannel finished:", verified?.id);
 
       // Log the action if verification fails
       if (!verified) {

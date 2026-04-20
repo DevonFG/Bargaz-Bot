@@ -6,6 +6,9 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+## v26.5.8 - Apr 19
+Added temporary console logs in bot.js for debugging
+
 ## v26.5.7 - Apr 19
 Added timeout to all axios in announcements.js
 
