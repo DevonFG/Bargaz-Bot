@@ -1,6 +1,6 @@
 const axios = require("axios");
 const { loadData, saveData } = require("./storage");
-const { logWarning } = require("./logging");
+const { logAction } = require("./logging");
 
 // Quota tracking configuration
 const QUOTA_CONFIG = {
@@ -102,7 +102,7 @@ async function sendQuotaWarning(client, tracker, severity) {
     : `⚠️ YouTube API quota is running low. Monitor usage.`;
   
   // Send to owner's warning log channel
-  await logWarning(client, title, message, "youtube_quota");
+  await logAction(client, title, message, "youtube_quota", "system", severity === "critical" ? "error" : "warning");
   
   // Send to all servers that have announcements enabled
   for (const guildId in data) {

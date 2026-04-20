@@ -20,7 +20,7 @@ const { startMonitor, refreshChannel, verifyChannel, parseChannelInput, PLATFORM
 const { loadData, saveData } = require("./storage"); // import storage functions
 const { loadConfig, saveConfig } = require("./config"); // import config functions
 const quotaTracker = require("./youtube-quota"); 
-const { logAction, logWarning, logServerEvent, moveServerLogChannel } = require("./logging"); // import logging functions
+const { logAction, moveServerLogChannel } = require("./logging"); // import logging functions
 
 // Set up the Discord client with the permissions it needs
 const client = new Client({
@@ -341,7 +341,7 @@ client.on("guildCreate", async (guild) => {
     console.log(`Joined server: ${guild.name} - created #bargazbot-announcements and #bargazbot-logs`);
   } catch (error) {
     console.error(`Error setting up new server ${guild.name}:`, error.message);
-    await logWarning(client, "Server Setup Error", `Failed to set up server ${guild.name}: ${error.message}`, "server_setup");
+    await logAction(client, "Server Setup Error", `Failed to set up server ${guild.name}: ${error.message}`, "server_setup");
   }
 });
 

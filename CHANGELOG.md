@@ -6,6 +6,10 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+## v26.5.9 - Apr 19
+Replaced/removed all instances of logWarning and logServerEvent 
+(These weren't changed when I merged logging into one function, hense the recent issues)
+
 ## v26.5.8 - Apr 19
 Added temporary console logs in bot.js for debugging
 
