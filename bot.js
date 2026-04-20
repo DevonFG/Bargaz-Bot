@@ -543,6 +543,9 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
+      // Tell the user we're verifying - this can take a moment
+      await interaction.deferReply({ ephemeral: true });
+
       // Verify the channel actually exists on the platform
       const verified = await verifyChannel(platform, channelInput);
 
@@ -551,16 +554,6 @@ client.on("interactionCreate", async interaction => {
         await logServerEvent(client, guildId, "Announcement Add Failed", 
           `Failed to verify channel: ${channelInput} on ${platform}`, 
           interaction.user.id, "error");
-        await interaction.editReply({
-          content: `❌ Could not find that channel on ${platform}. Please check the input and try again. You can use a @handle, username, channel ID, or full URL.`
-        });
-        return;
-      }
-
-      // Tell the user we're verifying - this can take a moment
-      await interaction.deferReply({ ephemeral: true });
-
-      if (!verified) {
         await interaction.editReply({
           content: `❌ Could not find that channel on ${platform}. Please check the input and try again. You can use a @handle, username, channel ID, or full URL.`
         });
