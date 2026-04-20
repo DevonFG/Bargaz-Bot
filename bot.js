@@ -553,7 +553,7 @@ client.on("interactionCreate", async interaction => {
 
       // Log the action if verification fails
       if (!verified) {
-        await logServerEvent(client, guildId, "Announcement Add Failed", 
+        await logAction(client, guildId, "Announcement Add Failed", 
           `Failed to verify channel: ${channelInput} on ${platform}`, 
           interaction.user.id, "error");
         await interaction.editReply({
@@ -606,7 +606,7 @@ client.on("interactionCreate", async interaction => {
         .setFooter({ text: "Use the menu below to confirm or cancel." });
         
         // Log successful add to server log
-        await logServerEvent(client, guildId, "Announcement Added", 
+        await logAction(client, guildId, "Announcement Added", 
          `Added **${verified.displayName}** (${nickname}) on ${platform} → <#${discordChannel.id}>`,
         interaction.user.id, "success");
 
@@ -656,7 +656,7 @@ client.on("interactionCreate", async interaction => {
         });
 
         // Log the deletion
-        await logServerEvent(client, guildId, "Announcement Deleted", 
+        await logAction(client, guildId, "Announcement Deleted", 
           `Removed **${foundConfig.displayName}** (${nickname}) from ${platform}`,
           interaction.user.id, "warning");
 
@@ -910,7 +910,7 @@ client.on("interactionCreate", async interaction => {
         data[guildId].botAnnouncementChannelId = selectedChannel.id;
         saveData(data);
 
-        await logServerEvent(
+        await logAction(
           client,
           guildId,
           "Announcement Channel Changed",
@@ -930,7 +930,7 @@ client.on("interactionCreate", async interaction => {
         data[guildId].serverLogChannelId = selectedChannel.id;
         saveData(data);
 
-        await logServerEvent(
+        await logAction(
           client,
           guildId,
           "Log Channel Changed",
@@ -953,7 +953,7 @@ client.on("interactionCreate", async interaction => {
         data[guildId].serverLogChannelId = selectedChannel.id;
         saveData(data);
 
-        await logServerEvent(
+        await logAction(
           client,
           guildId,
           "Announcements & Logs Channel Changed",
