@@ -1,9 +1,11 @@
-const axios  = require("axios");      // HTTP requests to APIs
-const Parser = require("rss-parser"); // Parses Rumble's RSS feed
+// Note: Rumble is disabled while I await a response from Rumble support (Automation requires permission, listed in TOS)
+// I also want to make Rumble not ise HTML scraping, but I'm not sure how yet and need to do more research
+const axios  = require("axios");                       // HTTP requests to YouTube API, Twitch API, and Rumble HTML scraping
+const Parser = require("rss-parser");                  // Parses RSS feed for YouTube as a backup/double check, and Twitch as a backup
 const { loadData, saveData } = require("./storage");   // Read/write storage functions
 const { EmbedBuilder }       = require("discord.js");  // EmbedBuilder lets us create nicely formatted DC messages
-const cheerio = require("cheerio") // HTML Parsing for Rumble
-const quotaTracker = require("./youtube-quota");
+const cheerio = require("cheerio")                     // HTML parsing and scraping for Rumble 
+const quotaTracker = require("./youtube-quota");       // Internal tracker for YouTube's API Quota
 
 // Create RSS parser with headers
 const parser = new Parser({

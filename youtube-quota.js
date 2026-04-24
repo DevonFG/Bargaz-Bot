@@ -1,4 +1,4 @@
-const axios = require("axios");
+const axios = require("axios"); // HTTP request to YouTube API
 const { loadData, saveData } = require("./storage");
 const { logAction } = require("./logging");
 
