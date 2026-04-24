@@ -6,6 +6,9 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+## v26.5.12 - Apr 24
+Added platformConfig.js (no code yet, but comments of what I will be putting/moving there)
+
 ## v26.5.11 - Apr 24
 Fixed a collection of comments to say proper information
 
