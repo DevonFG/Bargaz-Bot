@@ -1,6 +1,6 @@
 {
   "name": "bargaz-bot",
-  "version": "26.5.12",
+  "version": "26.5.13",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -11,6 +11,6 @@
     "axios": "^1.6.0",
     "rss-parser": "^3.13.0",
     "cheerio": "^1.0.0-rc.12"
-  }
+  },
+  "type": "module"
 }
-

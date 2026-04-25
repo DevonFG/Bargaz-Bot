@@ -1,10 +1,13 @@
-const fs = require('fs'); //fs means file system, this lets us read/write files
-const path = require('path'); //helps build file paths correctly across different OS's
+import fs from "fs";
+import path from "path";
+import fileURLToPath from "url";
 
-const dataPath = path.join(__dirname, 'data.json'); //__dirname is the folder for this file, this builds the full path to data.json in the same folder
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const configPath = path.join(__dirname, "botconfig.json");
 
 // Loads the data from data.json
-function loadData() {
+export function loadData() {
   // Check if data.json exists, if not, create it with empty {}
   if (!fs.existsSync(dataPath)) {
     fs.writeFileSync(dataPath, JSON.stringify({}));
@@ -14,11 +17,8 @@ function loadData() {
 }
 
 // Saves data back to data.json
-function saveData(data) {
+export function saveData(data) {
   // Convert JavaScript object back into JSON text and write it
   // The "null, 2" part makes the JSON file readable if it's opened
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
-
-//Make both functions available to other files
-module.exports = { loadData, saveData };

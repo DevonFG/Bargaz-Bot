@@ -1,33 +1,20 @@
-require("dotenv").config(); // loads .env file so process.env variables are available
+import "dotenv/config"; // loads .env file so process.env variables are available
 
-const {
-  Client,
-  IntentsBitField,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
-  PermissionFlagsBits,
-  EmbedBuilder
-} = require("discord.js"); // import everything we need from discord.js
-
-const { startMonitor, refreshChannel, verifyChannel, parseChannelInput, PLATFORM_CONTENT_TYPES, pendingAdds } = require("./announcements"); // import announcement functions
-const { loadData, saveData } = require("./storage"); // import storage functions
-const { loadConfig, saveConfig } = require("./config"); // import config functions
-const quotaTracker = require("./youtube-quota"); 
-const { logAction, moveServerLogChannel } = require("./logging"); // import logging functions
+import * as discord         from "discord.js";
+import * as announcements   from "./announcements.js";
+import * as storage         from "./storage.js";
+import * as config          from "./config.js";
+import * as quotaTracker    from "./youtube-quota.js";
+import * as logging         from "./logging.js";
+import * as platformManager from "./platformManager.js";
+import * as utils           from "./utils.js";
 
 // Set up the Discord client with the permissions it needs
 const client = new Client({
   intents: [
-    IntentsBitField.Flags.Guilds,        // allows bot to see servers
-    IntentsBitField.Flags.GuildMessages, // allows bot to see messages
-    IntentsBitField.Flags.MessageContent // allows bot to read message content
+    discord.GatewayIntentBits.Guilds,        // allows bot to see servers
+    discord.GatewayIntentBits.GuildMessages, // allows bot to see messages
+    discord.GatewayIntentBits.MessageContent // allows bot to read message content
   ]
 });
 
@@ -35,7 +22,7 @@ const client = new Client({
 const commands = [
 
   // /youtube_rss_mode - toggle RSS-only mode for YouTube
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("youtube_rss_mode")
     .setDescription("Toggle RSS-only mode for YouTube announcements")
     .addStringOption( option =>
@@ -50,12 +37,12 @@ const commands = [
     ),
 
   // /ping - basic test command
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("ping")
     .setDescription("Replies with Pong!"),
 
   // /announcement_add - add a channel to monitor
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("announcement_add")
     .setDescription("Add a YouTube or Twitch channel to monitor for announcements")
     .addStringOption(option =>
@@ -89,7 +76,7 @@ const commands = [
     ),
 
   // /announcement_delete - remove a monitored channel
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("announcement_delete")
     .setDescription("Remove a monitored channel")
     .addStringOption(option =>
@@ -111,7 +98,7 @@ const commands = [
     ),
 
   // /announcement_edit - edit a monitored channel
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("announcement_edit")
     .setDescription("Edit a monitored channel's settings")
     .addStringOption(option =>
@@ -133,7 +120,7 @@ const commands = [
     ),
 
   // /setmessage - set custom announcement message and mentions for a channel
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("setmessage")
     .setDescription("Set the announcement message and @ mentions for a monitored channel")
     .addStringOption(option =>
@@ -167,7 +154,7 @@ const commands = [
     ),
 
   // /refresh - force recheck a specific channel by nickname and platform
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("refresh")
     .setDescription("Force a recheck of a specific monitored channel for new/updated content")
     .addStringOption(option =>
@@ -195,7 +182,7 @@ const commands = [
     ),
 
   // /list - list all monitored channels filtered by platform
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("list")
     .setDescription("List all monitored channels in this server")
     .addStringOption(option =>
@@ -211,7 +198,7 @@ const commands = [
     ),
 
   // /setrefreshpermission - control who can use /refresh
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("setrefreshpermission")
     .setDescription("Set who can use the /refresh command in this server")
     .addStringOption(option =>
@@ -233,7 +220,7 @@ const commands = [
     ),
 
   // /editautocreatedchannels - change where announcements and/or logs are sent
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("editautocreatedchannels")
     .setDescription("Configure where announcements and/or server logs are sent")
     .addSubcommand(subcommand =>
@@ -271,7 +258,7 @@ const commands = [
     ),
 
   // /setwelcomemessage - owner only, sets the welcome message for all new servers
-  new SlashCommandBuilder()
+  new discord.SlashCommandBuilder()
     .setName("setwelcomemessage")
     .setDescription("(Bot owner only) Set the welcome message sent when the bot joins a new server")
     .addStringOption(option =>
@@ -288,11 +275,11 @@ client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
   // Register all slash commands globally with Discord
-  const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN);
+  const rest = new discord.REST({ version: "10" }).setToken(process.env.BOT_TOKEN);
   try {
     console.log("Registering slash commands...");
     await rest.put(
-      Routes.applicationCommands(client.user.id),
+      discord.Routes.applicationCommands(client.user.id),
       { body: commands }
     );
     console.log("Slash commands registered!");
@@ -311,8 +298,8 @@ client.once("clientReady", async () => {
 // When the bot joins a new server
 client.on("guildCreate", async (guild) => {
   try {
-    const config = loadConfig();
-    const data   = loadData();
+    const configuration = config.loadConfig();
+    const data          = storage.loadData();
 
     // Create #bargazbot-announcements channel in the new server
     const announcementChannel = await guild.channels.create({
@@ -330,18 +317,18 @@ client.on("guildCreate", async (guild) => {
     if (!data[guild.id]) data[guild.id] = {};
     data[guild.id].botAnnouncementChannelId = announcementChannel.id;
     data[guild.id].serverLogChannelId = logChannel.id;
-    saveData(data);
+    storage.saveData(data);
 
     // Send the welcome message
-    await announcementChannel.send(config.welcomeMessage);
+    await announcementChannel.send(configuration.welcomeMessage);
 
     // Log to owner's continuous log
-    await logAction(client, "Bot Joined Server", `Joined **${guild.name}** with ${guild.memberCount} members`, guild.id);
+    await logging.logAction(client, "Bot Joined Server", `Joined **${guild.name}** with ${guild.memberCount} members`, guild.id);
 
     console.log(`Joined server: ${guild.name} - created #bargazbot-announcements and #bargazbot-logs`);
   } catch (error) {
     console.error(`Error setting up new server ${guild.name}:`, error.message);
-    await logAction(client, "Server Setup Error", `Failed to set up server ${guild.name}: ${error.message}`, "server_setup");
+    await logging.logAction(client, "Server Setup Error", `Failed to set up server ${guild.name}: ${error.message}`, "server_setup");
   }
 });
 
@@ -359,7 +346,7 @@ client.on("messageCreate", async (message) => {
 
   console.log("Broadcasting cross-server announcement...");
 
-  const data = loadData();
+  const data = storage.loadData();
 
   // Build the announcement embed
   const embed = new EmbedBuilder()
@@ -423,7 +410,7 @@ client.on("interactionCreate", async interaction => {
     const { commandName, guildId } = interaction;
 
     // Load data and make sure this server has an entry
-    const data = loadData();
+    const data = storage.loadData();
     if (!data[guildId]) data[guildId] = {};
     if (!data[guildId].announcements) data[guildId].announcements = {};
 
@@ -452,17 +439,17 @@ client.on("interactionCreate", async interaction => {
       }
 
       const mode = interaction.options.getString("mode");
-      const quotaTracker = require("./youtube-quota");
+      const trackQuota = quotaTracker.quotaTracker;
 
       // Get current tracker state
-      const tracker = quotaTracker.getEstimatedQuotaRemaining();
+      const tracker = trackQuota.getEstimatedQuotaRemaining();
 
       if (mode === "enable") {
         // Enable RSS-only mode
         tracker.rssOnlyMode = true;
         tracker.manualRssMode = true; // Track that admin manually set this
         tracker.manualRssModeUntil = new Date(); // Current time + will reset at midnight
-        saveData(data);
+        storage.saveData(data);
 
         const embed = new EmbedBuilder()
           .setTitle("🔴 YouTube RSS-Only Mode ENABLED")
@@ -485,8 +472,8 @@ client.on("interactionCreate", async interaction => {
         // Disable RSS-only mode
         tracker.rssOnlyMode = false;
         tracker.manualRssMode = false;
-        tracker.estimatedRemaining = quotaTracker.QUOTA_CONFIG.maxDailyQuota; // Reset to max
-        saveData(data);
+        tracker.estimatedRemaining = trackQuota.QUOTA_CONFIG.maxDailyQuota; // Reset to max
+        storage.saveData(data);
 
         const embed = new EmbedBuilder()
           .setTitle("🟢 YouTube RSS-Only Mode DISABLED")
@@ -548,12 +535,12 @@ client.on("interactionCreate", async interaction => {
       console.log("deferred, starting  verifyChannel");
 
       // Verify the channel actually exists on the platform
-      const verified = await verifyChannel(platform, channelInput);
+      const verified = await platformManager.verifyChannel(platform, channelInput);
       console.log("verifyChannel finished:", verified?.id);
 
       // Log the action if verification fails
       if (!verified) {
-        await logAction(client, guildId, "Announcement Add Failed", 
+        await logging.logAction(client, guildId, "Announcement Add Failed", 
           `Failed to verify channel: ${channelInput} on ${platform}`, 
           interaction.user.id, "error");
         await interaction.editReply({
@@ -589,39 +576,36 @@ client.on("interactionCreate", async interaction => {
       });
 
       // Build a preview embed
-      const previewEmbed = new EmbedBuilder()
+      const previewEmbed = new discord.EmbedBuilder()
         .setTitle(`Preview: ${verified.displayName}`)
-        .setColor(
-          platform === "youtube" ? "#FF0000" :
-          platform === "twitch"  ? "#9146FF" : "#85C742"
-        )
+        .setColor(platformManager.PLATFORM_COLORS)
         .addFields(
           { name: "Platform",      value: platform,                                        inline: true },
           { name: "Channel",       value: verified.displayName,                            inline: true },
           { name: "Handle",        value: verified.handle,                                 inline: true },
           { name: "Nickname",      value: nickname,                                        inline: true },
           { name: "Posting in",    value: `<#${discordChannel.id}>`,                       inline: true },
-          { name: "Content types", value: PLATFORM_CONTENT_TYPES[platform].join(", "),    inline: false }
+          { name: "Content types", value: platformManager.PLATFORM_CONTENT_TYPES[platform].join(", "),    inline: false }
         )
         .setFooter({ text: "Use the menu below to confirm or cancel." });
         
         // Log successful add to server log
-        await logAction(client, guildId, "Announcement Added", 
+        await logging.logAction(client, guildId, "Announcement Added", 
          `Added **${verified.displayName}** (${nickname}) on ${platform} → <#${discordChannel.id}>`,
         interaction.user.id, "success");
 
       if (verified.thumbnail) previewEmbed.setThumbnail(verified.thumbnail);
 
       // Show preview with confirm/cancel select menu
-      const confirmRow = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
+      const confirmRow = new discord.ActionRowBuilder().addComponents(
+        new discord.StringSelectMenuBuilder()
           .setCustomId(`confirm_add_${guildId}`)
           .setPlaceholder("Confirm or cancel")
           .addOptions(
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("✅ Confirm - Add this channel")
               .setValue(`confirm|${pendingKey}`),
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("❌ Cancel")
               .setValue("cancel")
           )
@@ -656,7 +640,7 @@ client.on("interactionCreate", async interaction => {
         });
 
         // Log the deletion
-        await logAction(client, guildId, "Announcement Deleted", 
+        await logging.logAction(client, guildId, "Announcement Deleted", 
           `Removed **${foundConfig.displayName}** (${nickname}) from ${platform}`,
           interaction.user.id, "warning");
 
@@ -679,7 +663,7 @@ client.on("interactionCreate", async interaction => {
       data[guildId].announcements[platform] = data[guildId].announcements[platform].filter(
         c => c.nickname.toLowerCase() !== nickname.toLowerCase()
       );
-      saveData(data);
+      storage.saveData(data);
 
       await interaction.reply({
         content:   `✅ Successfully removed **${foundConfig.displayName}** (${nickname}) from ${platform} monitoring.`,
@@ -724,31 +708,31 @@ client.on("interactionCreate", async interaction => {
 
       // Show edit options select menu
       const editRow = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
+        new discord.StringSelectMenuBuilder()
           .setCustomId(`edit_field_${guildId}`)
           .setPlaceholder("What would you like to edit?")
           .addOptions(
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("Nickname")
               .setDescription("Change the nickname used to identify this channel")
               .setValue(`editfield|nickname|${nickname}|${platform}`),
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("Platform")
               .setDescription("Move this channel to a different platform")
               .setValue(`editfield|platform|${nickname}|${platform}`),
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("Discord announcement channel")
               .setDescription("Change which Discord channel announcements are posted in")
               .setValue(`editfield|discordchannel|${nickname}|${platform}`),
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("Custom message")
               .setDescription("Change the announcement message")
               .setValue(`editfield|message|${nickname}|${platform}`),
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("@ Mentions")
               .setDescription("Change which roles are mentioned in announcements")
               .setValue(`editfield|mentions|${nickname}|${platform}`),
-            new StringSelectMenuOptionBuilder()
+            new discord.StringSelectMenuOptionBuilder()
               .setLabel("Content types")
               .setDescription("Change which content types trigger announcements")
               .setValue(`editfield|contenttypes|${nickname}|${platform}`)
@@ -808,7 +792,7 @@ client.on("interactionCreate", async interaction => {
           .filter(id => id.length > 0);
       }
 
-      saveData(data);
+      storage.saveData(data);
 
       await interaction.reply({
         content:   `✅ Updated announcement settings for **${foundConfig.displayName}** (${nickname}) on ${platform}.`,
@@ -822,7 +806,7 @@ client.on("interactionCreate", async interaction => {
     else if (commandName === "refresh") {
       const platform = interaction.options.getString("platform");
       const nickname = interaction.options.getString("nickname");
-      await refreshChannel(client, guildId, nickname, platform, contentType, interaction);
+      await announcements.refreshChannel(client, guildId, nickname, platform, contentType, interaction);
     }
 
     // ----------------------------------------------------------
@@ -901,16 +885,16 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
-      const subcommand = interaction.options.getSubcommand();
+      const subcommand      = interaction.options.getSubcommand();
       const selectedChannel = interaction.options.getChannel("channel");
 
       if (subcommand === "announcements") {
         // Change ONLY announcements channel
         const oldChannelId = data[guildId].botAnnouncementChannelId;
         data[guildId].botAnnouncementChannelId = selectedChannel.id;
-        saveData(data);
+        storage.saveData(data);
 
-        await logAction(
+        await logging.logAction(
           client,
           guildId,
           "Announcement Channel Changed",
@@ -923,14 +907,13 @@ client.on("interactionCreate", async interaction => {
           content: `✅ Bargaz Bot announcements will now be posted in <#${selectedChannel.id}>.`,
           ephemeral: true
         });
-      }
-      else if (subcommand === "logs") {
+      } else if (subcommand === "logs") {
         // Change ONLY logs channel
         const oldChannelId = data[guildId].serverLogChannelId;
         data[guildId].serverLogChannelId = selectedChannel.id;
-        saveData(data);
+        storage.saveData(data);
 
-        await logAction(
+        await logging.logAction(
           client,
           guildId,
           "Log Channel Changed",
@@ -943,17 +926,16 @@ client.on("interactionCreate", async interaction => {
           content: `✅ Server logs will now be posted in <#${selectedChannel.id}>.`,
           ephemeral: true
         });
-      }
-      else if (subcommand === "both") {
+      } else if (subcommand === "both") {
         // Use same channel for BOTH
         const oldAnnouncementChannelId = data[guildId].botAnnouncementChannelId;
         const oldLogChannelId = data[guildId].serverLogChannelId;
 
         data[guildId].botAnnouncementChannelId = selectedChannel.id;
         data[guildId].serverLogChannelId = selectedChannel.id;
-        saveData(data);
+        storage.saveData(data);
 
-        await logAction(
+        await logging.logAction(
           client,
           guildId,
           "Announcements & Logs Channel Changed",
@@ -990,10 +972,10 @@ client.on("interactionCreate", async interaction => {
         return;
       }
 
-      const newMessage = interaction.options.getString("message");
-      const config     = loadConfig();
-      config.welcomeMessage = newMessage;
-      saveConfig(config);
+      const newMessage    = interaction.options.getString("message");
+      const configuration = config.loadConfig();
+      configuration.welcomeMessage = newMessage;
+      storage.saveConfig(configuration);
 
       await interaction.reply({
         content:   `✅ Welcome message updated! New servers will now receive:\n\n${newMessage}`,
@@ -1007,7 +989,7 @@ client.on("interactionCreate", async interaction => {
   // ============================================================
   else if (interaction.isStringSelectMenu()) {
     const { guildId, customId } = interaction;
-    const data = loadData();
+    const data = storage.loadData();
 
     // ----------------------------------------------------------
     // Confirm or cancel adding a channel
@@ -1075,7 +1057,7 @@ client.on("interactionCreate", async interaction => {
         lastCheckTime:    null
       });
 
-      saveData(data);
+      storage.saveData(data);
       pendingAdds.delete(pendingKey);
 
       await interaction.update({
@@ -1175,17 +1157,17 @@ client.on("interactionCreate", async interaction => {
       // For platform change show a select menu
       else if (field === "platform") {
         const platformRow = new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
+          new discord.StringSelectMenuBuilder()
             .setCustomId(`edit_platform_${guildId}`)
             .setPlaceholder("Select new platform")
             .addOptions(
-              new StringSelectMenuOptionBuilder()
+              new discord.StringSelectMenuOptionBuilder()
                 .setLabel("YouTube")
                 .setValue(`newplatform|youtube|${nickname}|${platform}`),
-              new StringSelectMenuOptionBuilder()
+              new discord.StringSelectMenuOptionBuilder()
                 .setLabel("Twitch")
                 .setValue(`newplatform|twitch|${nickname}|${platform}`),
-              new StringSelectMenuOptionBuilder()
+              new discord.StringSelectMenuOptionBuilder()
                 .setLabel("Rumble")
                 .setValue(`newplatform|rumble|${nickname}|${platform}`)
             )
@@ -1227,7 +1209,7 @@ client.on("interactionCreate", async interaction => {
       }
 
       data[guildId].announcements[newPlatform].push(channelConfig);
-      saveData(data);
+      storage.saveData(data);
 
       await interaction.update({
         content:    `✅ Moved **${channelConfig.displayName}** to ${newPlatform}.`,
@@ -1257,7 +1239,7 @@ client.on("interactionCreate", async interaction => {
       }
 
       channelConfig.enabledTypes = selectedTypes;
-      saveData(data);
+      storage.saveData(data);
 
       await interaction.update({
         content:    `✅ Updated content types for **${channelConfig.displayName}** on ${platform}: ${selectedTypes.join(", ")}.`,
@@ -1271,7 +1253,7 @@ client.on("interactionCreate", async interaction => {
   // ============================================================
   else if (interaction.isModalSubmit()) {
     const { guildId, customId } = interaction;
-    const data = loadData();
+    const data = storage.loadData();
 
     if (customId.startsWith("edit_modal_")) {
       const parts    = customId.split("_");
@@ -1317,7 +1299,7 @@ client.on("interactionCreate", async interaction => {
           .filter(id => id.length > 0);
       }
 
-      saveData(data);
+      storage.saveData(data);
 
       await interaction.reply({
         content:   `✅ Successfully updated **${field}** for **${channelConfig.displayName}** on ${platform}.`,

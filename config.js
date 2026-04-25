@@ -1,10 +1,13 @@
-const fs   = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
+import fileURLToPath from "url";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const configPath = path.join(__dirname, "botconfig.json");
 
 // Loads the bot config, always pulling sensitive values from .env
-function loadConfig() {
+export function loadConfig() {
   let saved = {};
 
   // Load any saved settings like welcome message from file if it exists
@@ -21,11 +24,9 @@ function loadConfig() {
 }
 
 // Saves welcome message to botconfig.json 
-function saveConfig(config) {
+export function saveConfig(config) {
   const toSave = {
     welcomeMessage: config.welcomeMessage
   };
   fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2));
 }
-
-module.exports = { loadConfig, saveConfig };

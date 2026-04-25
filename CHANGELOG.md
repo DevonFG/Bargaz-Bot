@@ -6,6 +6,20 @@
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
 
+A feature is when something is added/removed that changes what the user can do.
+Any other changes, regardless of size, is considered a patch. Very few exceptions.
+
+## v26.5.13 - Apr 25
+Started changing bot to use ESM instead of CommonJS
+- imports and all calls of functions that I could find
+Renamed platformConfig.js to platformManager.js and Created utils.js
+- Moved a collection of functions in other files, mainly from announcements.js, to these files
+- New organization towards how functionality is organized within bot files
+Updated CHANGELOG.md to include feature vs patch definitions
+
+Note: I can garuntee I missed something and don't have time to debug, 
+so the actual bot will continue to run on v26.5.10 till I can debug.
+
 ## v26.5.12 - Apr 24
 Added platformConfig.js (no code yet, but comments of what I will be putting/moving there)
 

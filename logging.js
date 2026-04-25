@@ -1,5 +1,5 @@
-const { EmbedBuilder } = require("discord.js");
-const { loadData, saveData } = require("./storage");
+import * as discord from "discord.js";
+import * as storage from "./storage";
 
 // Send a log to the respecive log channel
 // client = discord bot client
@@ -8,14 +8,14 @@ const { loadData, saveData } = require("./storage");
 // guildId = server ID where the action happened
 // userId = user who triggered the action
 // type = severety level ("info", "success", "warning", "error") | Defaults as "info"
-async function logAction(client, title, message, guildId, userId = "unknown", type = "info") {
+export async function logAction(client, title, message, guildId, userId = "unknown", type = "info") {
   try {
 
     // ====================================
     // Individual Server Log Channel Config
     // ====================================
 
-    const data = loadData();
+    const data = storage.loadData();
 
     // Create empty object if no data exists yet
     if (!data[guildId]) {
@@ -42,7 +42,7 @@ async function logAction(client, title, message, guildId, userId = "unknown", ty
 
         serverChannelId = logChannel.id;
         data[guildId].serverLogChannelId = serverChannelId;
-        saveData(data);
+        storage.saveData(data);
 
         console.log(`Created log channel for server ${guild.name}`);
       } catch (error) {
@@ -92,7 +92,7 @@ async function logAction(client, title, message, guildId, userId = "unknown", ty
     }
     
     // Create embed
-    const embed = new EmbedBuilder()
+    const embed = new discord.EmbedBuilder()
       .setTitle(`${icons[type] || "📝"} ${title}`)
       .setDescription(message)
       .setColor(colors[type] || 0xFFC107)
@@ -136,9 +136,9 @@ async function logAction(client, title, message, guildId, userId = "unknown", ty
 }
 
 //Move a server's log channel to a different channel
-async function moveServerLogChannel(client, guildId, newChannelId, userId) {
+export async function moveServerLogChannel(client, guildId, newChannelId, userId) {
   try {
-    const data = loadData();
+    const data = storage.loadData();
 
     if (!data[guildId]) {
       data[guildId] = {};
@@ -146,7 +146,7 @@ async function moveServerLogChannel(client, guildId, newChannelId, userId) {
 
     const oldChannelId = data[guildId].serverLogChannelId;
     data[guildId].serverLogChannelId = newChannelId;
-    saveData(data);
+    storage.saveData(data);
 
     const channel = client.channels.cache.get(newChannelId);
     if (channel) {
@@ -169,8 +169,3 @@ async function moveServerLogChannel(client, guildId, newChannelId, userId) {
     console.error("Error moving server log channel:", error);
   }
 }
-
-module.exports = {
-  logAction,
-  moveServerLogChannel
-};

@@ -1,9 +1,9 @@
-const axios = require("axios"); // HTTP request to YouTube API
-const { loadData, saveData } = require("./storage");
-const { logAction } = require("./logging");
+import axios from "axios";
+import * as storage from "./storage";
+import * as logging from "./logging";
 
 // Quota tracking configuration
-const QUOTA_CONFIG = {
+export const QUOTA_CONFIG = {
   warningThreshold: 500,    // Warn when quota drops below 500 units
   criticalThreshold: 100,   // Switch to RSS-only at 100 units
   checkInterval: 3600000,   // Check quota every hour (in milliseconds)
@@ -11,7 +11,7 @@ const QUOTA_CONFIG = {
 };
 
 // Check current quota usage
-async function checkQuotaUsage() {
+export async function checkQuotaUsage() {
   try {
     // Make a minimal API call that costs 1 quota unit
     // We'll use channels.list which is cheap
@@ -46,14 +46,14 @@ function getEstimatedQuotaRemaining() {
       quotaExceeded: false,
       rssOnlyMode: false
     };
-    saveData(data);
+    storage.saveData(data);
   }
   return data.youtubeQuotaTracker;
 }
 
 // Update quota tracking after API calls
 function updateQuotaUsage(unitsUsed) {
-  const data = loadData();
+  const data = storage.loadData();
   if (!data.youtubeQuotaTracker) {
     data.youtubeQuotaTracker = {
       lastUpdated: Date.now(),
@@ -87,13 +87,13 @@ function updateQuotaUsage(unitsUsed) {
     tracker.rssOnlyMode = false; // Re-enable API if we recover
   }
 
-  saveData(data);
+  storage.saveData(data);
   return tracker;
 }
 
 // Send warning to announcement channel AND owner's warning log
 async function sendQuotaWarning(client, tracker, severity) {
-  const data = loadData();
+  const data = storage.loadData();
   
   const severityEmoji = severity === "critical" ? "🚨" : "⚠️";
   const title = `${severityEmoji} YouTube API Quota ${severity === "critical" ? "CRITICAL" : "Warning"}`;
@@ -102,7 +102,7 @@ async function sendQuotaWarning(client, tracker, severity) {
     : `⚠️ YouTube API quota is running low. Monitor usage.`;
   
   // Send to owner's warning log channel
-  await logAction(client, title, message, "youtube_quota", "system", severity === "critical" ? "error" : "warning");
+  await logging.logAction(client, title, message, "youtube_quota", "system", severity === "critical" ? "error" : "warning");
   
   // Send to all servers that have announcements enabled
   for (const guildId in data) {
@@ -152,14 +152,14 @@ async function sendQuotaWarning(client, tracker, severity) {
 }
 
 // Check if we should use RSS-only for YouTube
-function isYoutubeRssOnly() {
+export function isYoutubeRSSOnly() {
   const tracker = getEstimatedQuotaRemaining();
   return tracker.rssOnlyMode || tracker.quotaExceeded;
 }
 
 
 // Start quota monitoring
-function startQuotaMonitoring(client) {
+export function startQuotaMonitoring(client) {
   console.log("YouTube API quota monitoring started");
 
     setInterval(async () => {
@@ -182,7 +182,7 @@ function startQuotaMonitoring(client) {
       }
       
       tracker.lastUpdated = Date.now();
-      saveData(data);
+      storage.saveData(data);
       
       // Send notification of reset
       for (const guildId in data) {
@@ -219,7 +219,7 @@ function startQuotaMonitoring(client) {
         tracker.manualRssMode = false;
         tracker.rssOnlyMode = false;
         tracker.manualRssModeUntil = null;
-        saveData(data);
+        storage.saveData(data);
         
         // Send notification
         for (const guildId in data) {
@@ -268,21 +268,10 @@ function startQuotaMonitoring(client) {
       else if (quotaStatus === "exceeded") {
         const updated = updateQuotaUsage(0);
         updated.quotaExceeded = true;
-        saveData(loadData());
+        storage.saveData(loadData());
         console.error("🚨 YouTube API quota EXCEEDED");
         sendQuotaWarning(client, updated, "critical");
       }
     }
   }, QUOTA_CONFIG.checkInterval);
 }
-
-// Export functions
-module.exports = {
-  checkQuotaUsage,
-  updateQuotaUsage,
-  getEstimatedQuotaRemaining,
-  isYoutubeRssOnly,
-  startQuotaMonitoring,
-  sendQuotaWarning,
-  QUOTA_CONFIG
-};
