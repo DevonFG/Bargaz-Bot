@@ -15,6 +15,8 @@ const parser = new RSSParser({
   }
 });
 
+const CMSTARS_BASE = "https://www.cmstarscreations.com";
+
 // Builds the Discord embed card for any platform
 // platform = "youtube"/"twitch"/"rumble"
 // content = standardized content object returned by checkChannel
@@ -60,6 +62,35 @@ function buildEmbed(platform, content, customMessage, editHistory = [], isEnded 
   }
 
   return embed;
+}
+
+async function fetchCMStarsGroups(platformManager) {
+  const res = await axios.post(
+    `${CMSTARS_BASE}/_api/social-groups-serverless/groups/query`,
+    {},
+    {
+      headers: {
+        Cookie: platformManager.platformAuth.cmstars.cookies,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  return res.data.groups || [];
+}
+
+async function fetchCMStarsPosts(platformManager, groupId) {
+  const res = await axios.post(`{CMSTARS_BASE}/_api/social-feed-serverless/posts/query`,
+    { groupId },
+    { 
+      headers: {
+        Cookie: platformManager.platformAuth.cmstars.cookies,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  return res.data.posts || [];
 }
 
 // Checks a channel for new content on any platform
@@ -465,6 +496,42 @@ async function checkChannel(platform, channelConfig, enabledTypes) {
     */
   }
 
+  if (platform === "cmstars") {
+    const groups = await fetchCMStarsGroups(platformManager);
+
+    let allPosts = [];
+
+    for (const group of groups) {
+      const posts = await fetchCMStarsPosts(platformManager, group.id);
+
+      if (Array.isArray(posts)) {
+        allPosts.push(...posts.map(p => ({
+          ...p,
+          groupId: group.id
+        })));
+      }
+    }
+
+    const latestPost = allPosts.sort(
+      (a, b) => new Date(b.createdDate) 
+      - new Date(a.createdDate)
+    )[0];
+
+    if (!latestPost) return null;
+
+    return {
+      id: latestPost.id,
+      platfrom: "cmstars",
+      isLive: false,
+      isEnded: false,
+      title: latestPost.content?.title || "New Post",
+      description: latestPost.content?.body || latestPost.content || "",
+      thumbnail: latestPost.thumbnail || null,
+      createdAt: latestPost.createdDate,
+      groupId: latestPost.groupId
+    };
+  }
+
   console.error(`Unknown platform: ${platform}`);
   return null;
 }
@@ -624,7 +691,7 @@ export async function startMonitor(client) {
       if (!guild.announcements) continue;
 
       // Loop through each platform
-      for (const platform of ["youtube", "twitch", "rumble"]) {
+      for (const platform of ["youtube", "twitch", "rumble", "cmstars"]) {
         if (!guild.announcements[platform]) continue;
 
         for (const channelConfig of guild.announcements[platform]) {

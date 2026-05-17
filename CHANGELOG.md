@@ -9,6 +9,14 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.5.14 - May 16
+Added some code for cmstarscreations.com groups/posts support
+- Not public facing yet
+- No debugging done
+- Only messed with announcements.js and platformManager.js
+
+Note: Bot is still running off of v26.5.10
+
 ## v26.5.13 - Apr 25
 Started changing bot to use ESM instead of CommonJS
 - imports and all calls of functions that I could find

@@ -7,24 +7,24 @@ export const CHECK_INTERVAL = 300000; // time in milliseconds (300000 = 5min), h
 export const PLATFORM_COLORS = {
   youtube: "#FF0000", // YouTube red
   twitch:  "#9146FF", // Twitch purple
-  rumble:  "#85C742"  // Rumble green
+  rumble:  "#85C742",  // Rumble green
+  cmstars: "#dab537"  // CMStars gold
 };
 
 // Platform specific emojis
 export const PLATFORM_EMOJI = {
   youtube: "🔴",
   twitch:  "🟣",
-  rumble:  "🟢"
+  rumble:  "🟢",
+  cmstars: "🟡"
 };
 
 // Content types per platform
-// NOTE: Rumble doesn't have a public API yet so this uses RSS as a substitute
-// TODO: Update when Rumble releases an official public API
-// Devon has reached out to Rumble requesting API access
 export const PLATFORM_CONTENT_TYPES = {
   youtube: ["videos", "shorts", "streams", "premieres", "posts"],
   twitch:  ["streams"],
-  rumble:  ["videos", "streams"] // limited by RSS feed ability
+  rumble:  ["videos", "streams"], // limited by RSS feed ability & currently disabled
+  cmstars: ["groups"] // experimental
 };
 
 // Store Twitch access token so we don't keep requesting a new one every check
@@ -60,6 +60,18 @@ export async function getTwitchToken() {
     console.error("Error getting Twitch token:", error.message);
     return null;
   }
+}
+
+// Store CMStars cookies and userID
+// variable name needs changed =====================================================================================================
+export let platformAuth.cmstars = {
+  cookies: null,
+  userID: null
+};
+
+export function setCMStarsSession(cookies, userID = null) {
+  this.platformAuth.cmstars.cookies = cookies;
+  this.platformAuth.cmstars.userID = userID;
 }
 
 // Parses any input format into a clean channel identifier
@@ -123,6 +135,11 @@ export function parseChannelInput(platform, input) {
     return { type: "username", value: trimmed.replace("@", "") };\
     */
 
+  }
+
+  if (platform === "cmstars") {
+    return input.trim().toLowerCase();
+    return this.verifyCMStarsChannel(input);
   }
 
   return { type: "username", value: trimmed.replace("@", "") };
@@ -287,6 +304,10 @@ export async function verifyChannel(platform, channelInput) {
       console.error("Error verifying Rumble channel:", error.message);
       return null; 
     } */
+  }
+
+  if (platform === "cmstars") {
+    return typeof input === "string" && input.length > 0;
   }
 
   console.error(`Unknown platform: ${platform}`);
