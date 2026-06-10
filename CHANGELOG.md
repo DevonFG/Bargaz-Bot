@@ -9,6 +9,33 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.5.16 - Jun 10
+- Merged accidental changelog.md creation that had only v26.5.15 (also fixed the version number)
+- Changed bot runtime from manual on Pi OS to Docker
+- Introduced Docker containerization
+- Added Dockerfile for build environment
+- Implemented Docker compose for simplified use
+- Configured volumne mounts for SQLite Database storage and log storage
+- Allowed SQLite and Docker to auto-start
+- Verified stability of SQLite and Docker
+- Fixed a variety of minor bugs throughout the repository
+- Completely rewrote config.js
+- Largely changes storage.js
+
+Next Up:
+- Backup SQLite Databases
+- Remove password for bot user on Pi
+- Debugging actual code & testing
+
+## v26.5.15 - Jun 9
+Migrated bot from Pi3 to Pi4B
+- project moved from ~/bot to ~/apps/discord-bot
+- reorganized runtime directories
+- added package-lock.json
+- installed SQLite and Docker (in process of setup)
+- fixed firewall
+- changed to SSH key login
+
 ## v26.5.14 - May 16
 Added some code for cmstarscreations.com groups/posts support
 - Not public facing yet

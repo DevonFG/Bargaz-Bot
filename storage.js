@@ -1,24 +1,42 @@
-import fs from "fs";
-import path from "path";
-import fileURLToPath from "url";
+import sqlite3 from "sqlite3";
+import {open } from "sqlite";
+import { DB_PATH } from "./config.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const configPath = path.join(__dirname, "botconfig.json");
+const DB_PATH = process.env.DB_PATH || "./database/app.db";
 
-// Loads the data from data.json
-export function loadData() {
-  // Check if data.json exists, if not, create it with empty {}
-  if (!fs.existsSync(dataPath)) {
-    fs.writeFileSync(dataPath, JSON.stringify({}));
-  }
-  // Read and convert file from JSON text into a JavaScript object
-  return JSON.parse(fs.readFileSync(dataPath));
+let db;
+
+// Initialize SQLite connection & Schema
+export async function initDB() {
+db = await open({
+filename: DB_PATH,
+driver: sqlite3.Database
+});
+
+await db.exec(` CREATE TABLE IF NOT EXISTS logs
+(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+severity TEXT, -- info, warn, error, critical
+scope TEXT, -- guild, global, system, external
+type TEXT, -- logs, notifications, setup, etc
+trigger TEXT, -- command, auto, update, etc
+action TEXT -- /addchannel, newlog, etc
+guild_id TEXT,
+user_id TEXT,
+channel_id TEXT,
+message TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`);
+
+console.log("SQLite initialized at:", DB_PATH);
+return db;
 }
 
-// Saves data back to data.json
-export function saveData(data) {
-  // Convert JavaScript object back into JSON text and write it
-  // The "null, 2" part makes the JSON file readable if it's opened
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
+// Get active DB connection
+export function getDB() {
+if (!db) {
+throw new Error("SQLite not initialized. Call initDB() first.");
+}
+return db;
 }

@@ -1,0 +1,13 @@
+services:
+  discord-bot:
+    build: .
+    container_name: discord-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/app/database/app.db
+    volumes:
+      - /home/devon/data/discord-bot/database:/app/database
+      - /home/devon/data/discord-bot/logs:/app/logs
+    command: node bot.js

@@ -1,5 +1,5 @@
 import * as discord from "discord.js";
-import * as storage from "./storage";
+import * as storage from "./storage.js";
 
 // Send a log to the respecive log channel
 // client = discord bot client

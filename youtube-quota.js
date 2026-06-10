@@ -1,6 +1,6 @@
 import axios from "axios";
-import * as storage from "./storage";
-import * as logging from "./logging";
+import * as storage from "./storage.js";
+import * as logging from "./logging.js";
 
 // Quota tracking configuration
 export const QUOTA_CONFIG = {

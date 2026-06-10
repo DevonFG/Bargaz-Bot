@@ -1,4 +1,11 @@
-import "dotenv/config"; // loads .env file so process.env variables are available
+import dotenv from "dotenv"; // loads .env file so process.env variables are available
+import path from "path";
+
+dotenv.config({
+  path: path.resolve(process.cwd(), ".env")
+});
+
+console.log("ENV TEST:", process.env.OWNER_SERVER_ID);
 
 import * as discord         from "discord.js";
 import * as announcements   from "./announcements.js";
@@ -10,7 +17,7 @@ import * as platformManager from "./platformManager.js";
 import * as utils           from "./utils.js";
 
 // Set up the Discord client with the permissions it needs
-const client = new Client({
+const client = new discord.Client({
   intents: [
     discord.GatewayIntentBits.Guilds,        // allows bot to see servers
     discord.GatewayIntentBits.GuildMessages, // allows bot to see messages

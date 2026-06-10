@@ -64,14 +64,14 @@ export async function getTwitchToken() {
 
 // Store CMStars cookies and userID
 // variable name needs changed =====================================================================================================
-export let platformAuth.cmstars = {
+export let platformAuthCmstars = {
   cookies: null,
   userID: null
 };
 
 export function setCMStarsSession(cookies, userID = null) {
-  this.platformAuth.cmstars.cookies = cookies;
-  this.platformAuth.cmstars.userID = userID;
+  this.platformAuthCmstars.cookies = cookies;
+  this.platformAuthCmstars.userID = userID;
 }
 
 // Parses any input format into a clean channel identifier

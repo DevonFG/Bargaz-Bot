@@ -1,16 +1,18 @@
 {
   "name": "bargaz-bot",
-  "version": "26.5.15",
+  "version": "26.5.16",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.0.0",
     "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.6.1",
     "rss-parser": "^3.13.0",
-    "cheerio": "^1.0.0-rc.12"
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
   },
   "type": "module"
 }
