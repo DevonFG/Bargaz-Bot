@@ -9,6 +9,13 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.5.17 - Jun 25
+- Created GitHub page for ToS and privacy Policy
+- Created Terms of Service
+- Created Privacy Policy
+- Verified Discord Bot
+- Fixed bot permissions to not use administrator
+
 ## v26.5.16 - Jun 10
 - Merged accidental changelog.md creation that had only v26.5.15 (also fixed the version number)
 - Changed bot runtime from manual on Pi OS to Docker
