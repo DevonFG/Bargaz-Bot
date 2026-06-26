@@ -8,6 +8,6 @@ If you want to give feedback, either email me at devon6608@gmail.com, DM me on D
 join my Discord server that, while used for other things, includes a section for BargazBot, including 
 support and feedback: https://discord.gg/6EnavGremg
 
-If you want to add the bot to your server, use this link: https://discord.com/oauth2/authorize?client_id=1472482809095393384
+If you want to add the bot to your server, use this link: [https://discord.com/oauth2/authorize?client_id=1472482809095393384](https://discord.com/oauth2/authorize?client_id=1472482809095393384)
 
 Note: I am using the help of AI to create this, so while I understand all of the code and tweek a lot of things, stuff like the comments may seem a bit wierd.
