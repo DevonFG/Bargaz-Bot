@@ -9,7 +9,7 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
-## v26.5.17 - Jun 30
+## v26.5.18 - Jun 30
 Note: This was committed on June 30, but actually done a few days prior
 - Fixed DB_PATH declaration conflict
 - Fixed SQLite compatibility issues by switching to better-sqlite3
@@ -20,6 +20,13 @@ Note: This was committed on June 30, but actually done a few days prior
   - Daily keeps the past 7
   - Weekly keeps the past 5
 - Confirmed Docker's restart policy is working
+
+## v26.5.17 - Jun 25
+- Created GitHub page for ToS and Privacy Policy
+- Created Terms of Service
+- Created Privacy Policy
+- Verified Discord Bot
+- Fixed bot permissions to not use administrator
 
 ## v26.5.16 - Jun 10
 - Merged accidental changelog.md creation that had only v26.5.15 (also fixed the version number)
