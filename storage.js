@@ -1,8 +1,6 @@
 import sqlite3 from "sqlite3";
-import {open } from "sqlite";
+import { open } from "sqlite";
 import { DB_PATH } from "./config.js";
-
-const DB_PATH = process.env.DB_PATH || "./database/app.db";
 
 let db;
 

@@ -1,0 +1,170 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@discordjs/rest": {
+      "name": "@discordjs/rest",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "undici"
+      ],
+      "effects": [
+        "@discordjs/ws",
+        "discord.js"
+      ],
+      "range": "0.5.0-dev.1650197025-b94a876 - 3.0.0-dev.1744071169-d93a52c1d",
+      "nodes": [
+        "node_modules/@discordjs/rest"
+      ],
+      "fixAvailable": {
+        "name": "discord.js",
+        "version": "13.17.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@discordjs/ws": {
+      "name": "@discordjs/ws",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "@discordjs/rest"
+      ],
+      "effects": [
+        "discord.js"
+      ],
+      "range": "<=3.0.0-dev.1753316119-f2fec9177",
+      "nodes": [
+        "node_modules/@discordjs/ws"
+      ],
+      "fixAvailable": {
+        "name": "discord.js",
+        "version": "13.17.1",
+        "isSemVerMajor": true
+      }
+    },
+    "discord.js": {
+      "name": "discord.js",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "@discordjs/rest",
+        "@discordjs/ws",
+        "undici"
+      ],
+      "effects": [],
+      "range": "14.0.0-dev.1640779371.9cdc448 - 15.0.0-dev.1753316115-f2fec9177",
+      "nodes": [
+        "node_modules/discord.js"
+      ],
+      "fixAvailable": {
+        "name": "discord.js",
+        "version": "13.17.1",
+        "isSemVerMajor": true
+      }
+    },
+    "undici": {
+      "name": "undici",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1121242,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "undici vulnerable to HTTP header injection via Set-Cookie percent-decoding",
+          "url": "https://github.com/advisories/GHSA-p88m-4jfj-68fv",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-93"
+          ],
+          "cvss": {
+            "score": 5.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N"
+          },
+          "range": "<6.27.0"
+        },
+        {
+          "source": 1121245,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "undici WebSocket client vulnerable to denial of service via fragment count bypass",
+          "url": "https://github.com/advisories/GHSA-vxpw-j846-p89q",
+          "severity": "high",
+          "cwe": [
+            "CWE-400",
+            "CWE-770"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<6.27.0"
+        },
+        {
+          "source": 1121250,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "undici vulnerable to HTTP response queue poisoning via keep-alive socket reuse",
+          "url": "https://github.com/advisories/GHSA-35p6-xmwp-9g52",
+          "severity": "low",
+          "cwe": [
+            "CWE-367"
+          ],
+          "cvss": {
+            "score": 3.7,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N"
+          },
+          "range": "<6.27.0"
+        },
+        {
+          "source": 1121255,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "undici vulnerable to Set-Cookie SameSite attribute downgrade via permissive substring matching",
+          "url": "https://github.com/advisories/GHSA-g8m3-5g58-fq7m",
+          "severity": "low",
+          "cwe": [
+            "CWE-183"
+          ],
+          "cvss": {
+            "score": 3.7,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N"
+          },
+          "range": "<6.27.0"
+        }
+      ],
+      "effects": [
+        "@discordjs/rest",
+        "discord.js"
+      ],
+      "range": "<=6.26.0",
+      "nodes": [
+        "node_modules/@discordjs/rest/node_modules/undici",
+        "node_modules/discord.js/node_modules/undici"
+      ],
+      "fixAvailable": {
+        "name": "discord.js",
+        "version": "13.17.1",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 3,
+      "high": 1,
+      "critical": 0,
+      "total": 4
+    },
+    "dependencies": {
+      "prod": 122,
+      "dev": 0,
+      "optional": 0,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 121
+    }
+  }
+}
