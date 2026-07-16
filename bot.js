@@ -1,11 +1,11 @@
+process.on("uncaughtException",  (err) => { console.error("Uncaught Exception:", err); });
+process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
+
 import dotenv from "dotenv"; // loads .env file so process.env variables are available
 import path from "path";
+import express from "express";
 
-dotenv.config({
-  path: path.resolve(process.cwd(), ".env")
-});
-
-console.log("ENV TEST:", process.env.OWNER_SERVER_ID);
+dotenv.config();
 
 import * as discord         from "discord.js";
 import * as announcements   from "./announcements.js";
@@ -15,6 +15,24 @@ import * as quotaTracker    from "./youtube-quota.js";
 import * as logging         from "./logging.js";
 import * as platformManager from "./platformManager.js";
 import * as utils           from "./utils.js";
+
+// Create a server for runtime/endpoints
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => { res.status(200).send("Bargaz-Bot online"); });
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "online",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+console.log("REACHED LISTEN STEP", PORT); //Temporary code for debugging
+
+// Start server
+app.listen(PORT, () => { console.log(`Health server listening on ${PORT}`); });
 
 // Set up the Discord client with the permissions it needs
 const client = new discord.Client({
@@ -1317,4 +1335,6 @@ client.on("interactionCreate", async interaction => {
 });
 
 // Log the bot in using the token from the .env file
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.BOT_TOKEN).catch(err => {
+  console.error("Discord login failed:", err);
+});

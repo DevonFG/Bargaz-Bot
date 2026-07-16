@@ -9,6 +9,12 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.5.19 - July 15
+Note: This was actually done on June 30 but never committed
+- Changed to better-sqlite3
+- Adjusted a collection of files for better0sqlite3 compatibility
+- Did some minor bug fixes when seen
+
 ## v26.5.18 - Jun 30
 Note: This was committed on June 30, but actually done a few days prior
 - Fixed DB_PATH declaration conflict
