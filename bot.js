@@ -16,6 +16,8 @@ import * as logging         from "./logging.js";
 import * as platformManager from "./platformManager.js";
 import * as utils           from "./utils.js";
 
+import { startUpsNotifier } from "./upsNotifier.js";
+
 // Create a server for runtime/endpoints
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -298,6 +300,7 @@ const commands = [
 // When the bot first starts up and is ready
 client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}!`);
+  await startUpsNotifier(client);
 
   // Register all slash commands globally with Discord
   const rest = new discord.REST({ version: "10" }).setToken(process.env.BOT_TOKEN);

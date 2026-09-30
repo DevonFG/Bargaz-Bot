@@ -9,6 +9,27 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.6.0 - Sep 29
+- Pi was re-imaged and hosting environment was rebuit
+  - Including Debian 13/Trixie
+  - Node/npm dependencies
+  - restoring github repository
+  - recreating .env
+  - SSH access
+  - Tailscale
+  - firewall & security setup
+  - PM2 qutomatic startup
+  - Docker was not reconfigured
+- Dockerfile, .dockerignore, and docker-compose.yml were removed
+- Tailscale funnel health endpoint was created
+- UptimeRobot configured to check health endpoint
+- Configured new wifi connection (will be ethernet possibly in the future)
+- UPS HAT was physically installed and setup, including monitoring
+- Configured automatic graceful-shutdown (shutdownCoordinator.js created) and created a manual command for it 
+- Created upsNotifier.js and updated bot.js for direct reports from BargazBot into Discord
+- Health monitor now has HEAD and GET support (GET is more detailed though)
+- SQLite setup was made with exception of backups
+
 ## v26.5.19 - July 15
 Note: This was actually done on June 30 but never committed
 - Changed to better-sqlite3
