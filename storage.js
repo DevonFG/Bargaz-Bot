@@ -1,3 +1,21 @@
+/*
+=====================================================
+BargazBot Database Structure
+=====================================================
+Database: databases/bargazbot.db
+Backups: databases/backups/
+Tables:
+ -  users          (stores known discord users)
+ -  guilds         (stores known discord servers)
+ -  guild_members  (stores relating information between known users and known guilds)
+ -  guild_settings (stores saved customization for known guilds)
+ -  guild_subs     (stores what channels that each guild follows)
+ -  yt_channels    (stores known youtube channels)
+ -  tw_channels    (stores known twitch channels)
+ -  ki_channels    (stores known kick channels)
+=====================================================
+*/
+
 import Database from "better-sqlite3";
 import { DB_PATH } from "./config.js";
 

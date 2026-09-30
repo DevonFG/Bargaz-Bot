@@ -7,3 +7,8 @@ data.json
 database/
 logs/
 .log
+databases/*.db
+databases/*.db-shm
+databases/*.db-wal
+databases/backups/
+logs/

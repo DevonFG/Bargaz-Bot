@@ -9,6 +9,10 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.6.1 - Sep 29
+- Started debugging code
+- Started work on new database structure
+
 ## v26.6.0 - Sep 29
 - Pi was re-imaged and hosting environment was rebuit
   - Including Debian 13/Trixie

@@ -12,11 +12,10 @@ const __dirname = path.dirname(__filename);
 export const EnvVar = process.env;
 
 // File Paths
-export const DATA_DIR = "/home/devon/data/discord-bot";
-
-export const DB_PATH = path.join(DATA_DIR, "database/app.db");
-export const LOG_DIR = path.join(DATA_DIR, "logs");
-export const BACKUP_DIR = path.join(DATA_DIR, "backups");
+export const DB_DIR        = path.join(__dirname, "databases");
+export const DB_PATH       = path.join(DATA_DIR,  "bargazbot.db");
+export const LOG_DIR       = path.join(__dirname, "logs");
+export const DP_BACKUP_DIR = path.join(BD_DIR,    "backups");
 
 // Json Config
 const configPath = path.join(__dirname, "bot-config.json");

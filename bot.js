@@ -316,7 +316,7 @@ client.once("clientReady", async () => {
   }
 
   // Start the announcement monitor for all platforms
-  startMonitor(client);
+  announcements.startMonitor(client);
 
   // Start monitoring the YouTube API Quota limit
   quotaTracker.startQuotaMonitoring(client);
