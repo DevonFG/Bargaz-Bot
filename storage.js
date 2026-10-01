@@ -24,22 +24,156 @@ let db;
 // Initialize SQLite connection & Schema
 export function initDB() {
   db = new Database(DB_PATH);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
 
-  db.exec(` CREATE TABLE IF NOT EXISTS logs
-    (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    severity TEXT, -- info, warn, error, critical
-    scope TEXT, -- guild, global, system, external
-    type TEXT, -- logs, notifications, setup, etc
-    trigger TEXT, -- command, auto, update, etc
-    action TEXT -- /addchannel, newlog, etc
-    guild_id TEXT,
-    user_id TEXT,
-    channel_id TEXT,
-    message TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      user_id TEXT PRIMARY KEY,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS guilds (
+      guild_id TEXT PRIMARY KEY,
+      guild_name TEXT,
+      owner_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS guild_members (
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      joined_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, user_id),
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS user_entitlements (
+      user_id TEXT PRIMARY KEY,
+      youtube_limit INTEGER DEFAULT NULL,
+      twitch_limit INTEGER DEFAULT NULL,
+      kick_limit INTEGER DEFAULT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES uers(user_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS entitlement_allocations (
+      user_id TEXT NOT NULL,
+      guild_id TEXT NOT NULL,
+      youtube_limit INTEGER DEFAULT NULL,
+      twitch_limit INTEGER DEFAULT NULL,
+      kick_limit INTEGER DEFAULT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, guild_id),
+      FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS guild_settings (
+      guild_id TEXT PRIMARY KEY,
+      announcement_channel_id TEXT,
+      welcome_channel_id TEXT,
+      goodbye_channel_id TEXT,
+      logs_channel_id TEXT,
+      status_channel_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS youtube_channels (
+      channel_id TEXT PRIMARY KEY,
+      channel_name TEXT,
+      channel_url TEXT,
+      channel_handle TEXT,
+      uploads_playlist_id TEXT,
+      last_upload_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABEL IF NOT EXISTS youtube_recent_ids (
+      channel_id TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      newest_id TEXT,
+      previous_id TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (channel_id, content_type),
+      FOREIGN KEY (channel_id) REFERENCES youtube_channels(channel_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS twitch_channels (
+      channel_id TEXT PRIMARY KEY,
+      channel_name TEXT,
+      channel_url TEXT,
+      channel_handle TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS kick_channels (
+      channel_id TEXT PRIMARY KEY,
+      channel_name TEXT,
+      channel_url TEXT,
+      channel_handle TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS guild_youtube_subs (
+      guild_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      nickname TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, channel_id),
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE,
+      FOREIGN KEY (channel_id) REFERENCES youtube_channels(channel_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS guild_twitch_subs (
+      guild_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      nickname TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, channel_id),
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE,
+      FOREIGN KEY (channel_id) REFERENCES twitch_channels(channel_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS guild_kick_subs (
+      guild_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      nickname TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, channel_id),
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE,
+      FOREIGN KEY (channel_id) REFERENCES kick-channels(channel_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS youtube_content (
+      video_id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      title TEXT,
+      thumbnail_url TEXT,
+      scheduled_start_time DATETIME,
+      discovered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (channel_id) REFERENCES youtube_channels(channel_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS twitch_content (
+      stream_id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      title TEXT,
+      thumbnail_url TEXT,
+      discovered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (channel_id) REFERENCES twitch_channels(channel_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS kick_content (
+      channel_id TEXT PRIMARY KEY,
+      title TEXT,
+      thumbnail_url TEXT,
+      started_at DATETIME,
+      discovered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME,
+      updated_at DATETIME DEFAULT CURRENT TIMESTAMP,
+      FOREIGN KEY (channel_id) REFERENCES kick_channels(channel_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS guild_permissions (
+      guild_id TEXT NOT NULL,
+      permission_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, permission_type, target_id),
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
   `);
+
+// ADD COMMAND TO ALLOW ALLOCATION OF LIMITS TO SERVERS!!!!!
+// Note: Adding new columns of data requires a 1-time command in addition to adding to CREATE TABLE
 
   console.log("SQLite initialized at:", DB_PATH);
   return db;

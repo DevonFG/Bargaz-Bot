@@ -9,6 +9,12 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.6.2 - Oct 1
+- Replaced and expanded SQLite schema in storage.js for a full database structure
+  - Includes structures for upcoming features and new fields for existing ones
+- Recreated qutomatic database backups
+- Added backup-databases.js specifically for database logs
+
 ## v26.6.1 - Sep 29
 - Started debugging code
 - Started work on new database structure
