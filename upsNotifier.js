@@ -131,11 +131,11 @@ function shutdownMessage(status, shutdownRequest) {
 
 export async function startUpsNotifier(client) {
     const channelId =
-        process.env.OWNER_ANNOUNCEMENT_CHANNEL_ID;
+        process.env.OWNER_STATUS_CHANNEL;
 
     if (!channelId) {
         console.error(
-            "OWNER_ANNOUNCEMENT_CHANNEL_ID is not set. " +
+            "OWNER_STATUS_CHANNEL is not set. " +
             "UPS Discord notifications are disabled."
         );
         return;

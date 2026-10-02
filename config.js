@@ -13,9 +13,9 @@ export const EnvVar = process.env;
 
 // File Paths
 export const DB_DIR        = path.join(__dirname, "databases");
-export const DB_PATH       = path.join(DATA_DIR,  "bargazbot.db");
+export const DB_PATH       = path.join(DB_DIR,  "bargazbot.db");
 export const LOG_DIR       = path.join(__dirname, "logs");
-export const DP_BACKUP_DIR = path.join(BD_DIR,    "backups");
+export const DP_BACKUP_DIR = path.join(DB_DIR,    "backups");
 
 // Json Config
 const configPath = path.join(__dirname, "bot-config.json");

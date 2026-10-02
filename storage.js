@@ -76,6 +76,14 @@ export function initDB() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS guild_log_settings (
+      guild_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      enabled INTEGER NOT NULL CHECK (enabled IN (0,1)),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, category),
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS youtube_channels (
       channel_id TEXT PRIMARY KEY,
       channel_name TEXT,
@@ -85,7 +93,7 @@ export function initDB() {
       last_upload_id TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABEL IF NOT EXISTS youtube_recent_ids (
+    CREATE TABLE IF NOT EXISTS youtube_recent_ids (
       channel_id TEXT NOT NULL,
       content_type TEXT NOT NULL,
       newest_id TEXT,
@@ -133,7 +141,7 @@ export function initDB() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (guild_id, channel_id),
       FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE,
-      FOREIGN KEY (channel_id) REFERENCES kick-channels(channel_id) ON DELETE CASCADE);
+      FOREIGN KEY (channel_id) REFERENCES kick_channels(channel_id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS youtube_content (
       video_id TEXT PRIMARY KEY,
       channel_id TEXT NOT NULL,
@@ -161,7 +169,7 @@ export function initDB() {
       started_at DATETIME,
       discovered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       ended_at DATETIME,
-      updated_at DATETIME DEFAULT CURRENT TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (channel_id) REFERENCES kick_channels(channel_id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS guild_permissions (
       guild_id TEXT NOT NULL,

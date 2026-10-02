@@ -9,6 +9,45 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.7.0 - Oct 2
+THE BOT IS BACK ONLINE!!!
+- Overall code reorganization
+  - bot.js now only has starting anf connecting different parts of the bot
+  - Created commands.js for slash commands
+  - Created channelManager.js for managing channels in BargazBot
+  - Created permissions.js for managing who can configure BargazBot in an individual server
+  - Created owner.js for owner-specific features and controls
+  - Created applogger.js for local console/error logging
+- Shash command overhaul
+  - Added /help
+  - Added /channels for viewing and chaning what channels BargazBot uses in a server
+  - Added /permissions for allowing specific roles/users to configur BargazBot
+  - Combined the old announcement commands under /notification
+  - /youtube_rss_mode is now properly restricted to the owner
+- Added permissions system
+  - Server owners have permissions automatically
+  - Other users and roles can be given permissions with /permissions
+- Reworked server logging
+  - Added guild_log_settings to SQLite
+  - Added customization to what each server logs
+  - Note: Discord can share server history, but it is NOT saved locally
+- Reworked local logging/monitoring
+  - Local console and error logs now are stored on the pi and discord
+- Renamed and added to .env
+- Fixed multiple typos in SQLite schema and in general
+- Removed audit.json
+- Removed the old notification system from bot.js
+- Confirmed bot structure and that it starts
+- Confirmed /ping, /help, and /channels are working
+Next Up:
+- Rework notifications feature
+- Allow servers to choose if added roles/users to permissions can give others permissions
+- Test remaining untested features
+
+## v26.6.3 - Oct 1
+- Removed old audit.json from June 30th debugging (unneeded)
+- Fixed minor bug in config.js preventing ups shutdown
+
 ## v26.6.2 - Oct 1
 - Replaced and expanded SQLite schema in storage.js for a full database structure
   - Includes structures for upcoming features and new fields for existing ones
