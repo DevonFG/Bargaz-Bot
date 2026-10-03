@@ -1,5 +1,6 @@
 import { getDB } from "./storage.js";
 
+
 /*
 =====================================================
 Permission Types
@@ -10,6 +11,7 @@ export const PERMISSION_TYPES = {
   USER: "user",
   ROLE: "role"
 };
+
 
 /*
 =====================================================
@@ -28,28 +30,48 @@ function validatePermissionType(type) {
   }
 }
 
+
 /*
 =====================================================
-Permission Check
+Server Owner
 =====================================================
 */
 
-export function canConfigureBargazBot(member) {
+export function isGuildOwner(member) {
   if (!member?.guild) {
     return false;
   }
 
-  if (
+  return (
     member.id ===
     member.guild.ownerId
-  ) {
-    return true;
+  );
+}
+
+
+/*
+=====================================================
+Get Matching Permission Entries
+=====================================================
+*/
+
+function getMemberPermissionEntries(
+  member
+) {
+  if (!member?.guild) {
+    return [];
   }
 
   const db = getDB();
+
+  const entries = [];
+
   const userPermission =
     db.prepare(`
-      SELECT 1
+      SELECT
+        permission_type,
+        target_id,
+        can_manage_permissions
       FROM guild_permissions
       WHERE guild_id = ?
         AND permission_type = ?
@@ -62,43 +84,114 @@ export function canConfigureBargazBot(member) {
     );
 
   if (userPermission) {
-    return true;
+    entries.push(
+      userPermission
+    );
   }
 
   const roleIds =
     [...member.roles.cache.keys()];
 
   if (roleIds.length === 0) {
-    return false;
+    return entries;
   }
 
   const placeholders =
     roleIds
       .map(() => "?")
       .join(", ");
-  const rolePermission =
+
+  const rolePermissions =
     db.prepare(`
-      SELECT 1
+      SELECT
+        permission_type,
+        target_id,
+        can_manage_permissions
       FROM guild_permissions
       WHERE guild_id = ?
         AND permission_type = ?
         AND target_id IN (${placeholders})
-      LIMIT 1
-    `).get(
+    `).all(
       member.guild.id,
       PERMISSION_TYPES.ROLE,
       ...roleIds
     );
-  return Boolean(rolePermission);
+
+  entries.push(
+    ...rolePermissions
+  );
+
+  return entries;
 }
+
 
 /*
 =====================================================
-Add Permission
+Configuration Permission Check
 =====================================================
 */
 
-export function addPermission(
+export function canConfigureBargazBot(
+  member
+) {
+  if (!member?.guild) {
+    return false;
+  }
+
+  // The current Discord server owner
+  // always has full BargazBot access.
+  if (isGuildOwner(member)) {
+    return true;
+  }
+
+  return (
+    getMemberPermissionEntries(
+      member
+    ).length > 0
+  );
+}
+
+
+/*
+=====================================================
+Permission Management Check
+=====================================================
+*/
+
+export function canManagePermissions(
+  member
+) {
+  if (!member?.guild) {
+    return false;
+  }
+
+  // The current Discord server owner
+  // always controls BargazBot permissions.
+  if (isGuildOwner(member)) {
+    return true;
+  }
+
+  const entries =
+    getMemberPermissionEntries(
+      member
+    );
+
+  return entries.some(
+    entry =>
+      Number(
+        entry.can_manage_permissions
+      ) === 1
+  );
+}
+
+
+/*
+=====================================================
+Get Permission
+=====================================================
+*/
+
+export function getPermission(
   guildId,
   type,
   targetId
@@ -106,22 +199,171 @@ export function addPermission(
   validatePermissionType(type);
 
   const db = getDB();
-  const result =
+
+  return (
     db.prepare(`
-      INSERT OR IGNORE INTO guild_permissions (
-        guild_id,
+      SELECT
         permission_type,
         target_id,
+        can_manage_permissions,
         created_at
-      )
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-    `).run(
+      FROM guild_permissions
+      WHERE guild_id = ?
+        AND permission_type = ?
+        AND target_id = ?
+      LIMIT 1
+    `).get(
+      guildId,
+      type,
+      targetId
+    ) ??
+    null
+  );
+}
+
+
+/*
+=====================================================
+Add or Update Permission
+=====================================================
+*/
+
+export function addPermission(
+  guildId,
+  type,
+  targetId,
+  canManagePermissions = false
+) {
+  validatePermissionType(type);
+
+  const db = getDB();
+
+  const existing =
+    getPermission(
       guildId,
       type,
       targetId
     );
-  return result.changes > 0;
+
+  const manageValue =
+    canManagePermissions
+      ? 1
+      : 0;
+
+  if (existing) {
+    if (
+      Number(
+        existing.can_manage_permissions
+      ) === manageValue
+    ) {
+      return {
+        success: true,
+        created: false,
+        updated: false,
+        permission: existing
+      };
+    }
+
+    db.prepare(`
+      UPDATE guild_permissions
+      SET can_manage_permissions = ?
+      WHERE guild_id = ?
+        AND permission_type = ?
+        AND target_id = ?
+    `).run(
+      manageValue,
+      guildId,
+      type,
+      targetId
+    );
+
+    return {
+      success: true,
+      created: false,
+      updated: true,
+
+      permission: {
+        ...existing,
+        can_manage_permissions:
+          manageValue
+      }
+    };
+  }
+
+  db.prepare(`
+    INSERT INTO guild_permissions (
+      guild_id,
+      permission_type,
+      target_id,
+      can_manage_permissions,
+      created_at
+    )
+    VALUES (
+      ?,
+      ?,
+      ?,
+      ?,
+      CURRENT_TIMESTAMP
+    )
+  `).run(
+    guildId,
+    type,
+    targetId,
+    manageValue
+  );
+
+  return {
+    success: true,
+    created: true,
+    updated: false,
+
+    permission: {
+      permission_type: type,
+      target_id: targetId,
+      can_manage_permissions:
+        manageValue
+    }
+  };
 }
+
+
+/*
+=====================================================
+Change Permission Management Access
+=====================================================
+*/
+
+export function setPermissionManagement(
+  guildId,
+  type,
+  targetId,
+  canManagePermissions
+) {
+  validatePermissionType(type);
+
+  const db = getDB();
+
+  const result =
+    db.prepare(`
+      UPDATE guild_permissions
+      SET can_manage_permissions = ?
+      WHERE guild_id = ?
+        AND permission_type = ?
+        AND target_id = ?
+    `).run(
+      canManagePermissions
+        ? 1
+        : 0,
+      guildId,
+      type,
+      targetId
+    );
+
+  return (
+    result.changes > 0
+  );
+}
+
 
 /*
 =====================================================
@@ -137,6 +379,7 @@ export function removePermission(
   validatePermissionType(type);
 
   const db = getDB();
+
   const result =
     db.prepare(`
       DELETE FROM guild_permissions
@@ -148,8 +391,12 @@ export function removePermission(
       type,
       targetId
     );
-  return result.changes > 0;
+
+  return (
+    result.changes > 0
+  );
 }
+
 
 /*
 =====================================================
@@ -157,17 +404,23 @@ List Permissions
 =====================================================
 */
 
-export function getPermissions(guildId) {
+export function getPermissions(
+  guildId
+) {
   const db = getDB();
+
   return db.prepare(`
     SELECT
       permission_type,
       target_id,
+      can_manage_permissions,
       created_at
     FROM guild_permissions
     WHERE guild_id = ?
     ORDER BY
       permission_type ASC,
       created_at ASC
-  `).all(guildId);
+  `).all(
+    guildId
+  );
 }

@@ -6,16 +6,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ENV Variables
-// OWNER_SERVER_ID, OWNER_ANNOUNCEMENT_CHANNEL_ID, OWNER_LOG_CHANNEL_ID,
-// OWNER_WARNING_CHANNEL_ID, BOT_TOKEN, YOUTUBE_API_KEY, TWITCH_CLIENT_ID,
-// and TWITCH_CLIENT_SECRET as of v26.6.15
 export const EnvVar = process.env;
 
 // File Paths
 export const DB_DIR        = path.join(__dirname, "databases");
 export const DB_PATH       = path.join(DB_DIR,  "bargazbot.db");
 export const LOG_DIR       = path.join(__dirname, "logs");
-export const DP_BACKUP_DIR = path.join(DB_DIR,    "backups");
+export const DB_BACKUP_DIR = path.join(DB_DIR,    "backups");
 
 // Json Config
 const configPath = path.join(__dirname, "bot-config.json");
@@ -40,7 +37,13 @@ export function loadConfig() {
   };
 }
 
-// Saves welcome message to botconfig.json 
 export function saveConfig(config) {
-  fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2));
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify(
+      config,
+      null,
+      2
+    )
+  );
 }

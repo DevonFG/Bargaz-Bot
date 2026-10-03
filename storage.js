@@ -2,18 +2,6 @@
 =====================================================
 BargazBot Database Structure
 =====================================================
-Database: databases/bargazbot.db
-Backups: databases/backups/
-Tables:
- -  users          (stores known discord users)
- -  guilds         (stores known discord servers)
- -  guild_members  (stores relating information between known users and known guilds)
- -  guild_settings (stores saved customization for known guilds)
- -  guild_subs     (stores what channels that each guild follows)
- -  yt_channels    (stores known youtube channels)
- -  tw_channels    (stores known twitch channels)
- -  ki_channels    (stores known kick channels)
-=====================================================
 */
 
 import Database from "better-sqlite3";
@@ -54,13 +42,13 @@ export function initDB() {
       kick_limit INTEGER DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES uers(user_id) ON DELETE CASCADE);
+      FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS entitlement_allocations (
       user_id TEXT NOT NULL,
       guild_id TEXT NOT NULL,
-      youtube_limit INTEGER DEFAULT NULL,
-      twitch_limit INTEGER DEFAULT NULL,
-      kick_limit INTEGER DEFAULT NULL,
+      youtube_limit INTEGER DEFAULT 0,
+      twitch_limit INTEGER DEFAULT 0,
+      kick_limit INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, guild_id),
@@ -119,6 +107,8 @@ export function initDB() {
       guild_id TEXT NOT NULL,
       channel_id TEXT NOT NULL,
       nickname TEXT,
+      discord_channel_id TEXT,
+      custom_message TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (guild_id, channel_id),
@@ -128,6 +118,8 @@ export function initDB() {
       guild_id TEXT NOT NULL,
       channel_id TEXT NOT NULL,
       nickname TEXT,
+      discord_channel_id TEXT,
+      custom_message TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (guild_id, channel_id),
@@ -137,6 +129,8 @@ export function initDB() {
       guild_id TEXT NOT NULL,
       channel_id TEXT NOT NULL,
       nickname TEXT,
+      discord_channel_id TEXT,
+      custom_message TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (guild_id, channel_id),
@@ -175,12 +169,23 @@ export function initDB() {
       guild_id TEXT NOT NULL,
       permission_type TEXT NOT NULL,
       target_id TEXT NOT NULL,
+      can_manage_permissions INTEGER NOT NULL DEFAULT 0 CHECK (can_manage_permissions IN (0,1)),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (guild_id, permission_type, target_id),
       FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS notification_messages (
+      guild_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      discord_channel_id TEXT NOT NULL,
+      discord_message_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, platform, content_id, event_type),
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
   `);
 
-// ADD COMMAND TO ALLOW ALLOCATION OF LIMITS TO SERVERS!!!!!
 // Note: Adding new columns of data requires a 1-time command in addition to adding to CREATE TABLE
 
   console.log("SQLite initialized at:", DB_PATH);

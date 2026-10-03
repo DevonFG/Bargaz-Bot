@@ -9,6 +9,28 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. Very few exceptions.
 
+## v26.8.0 - Oct 2
+THE BOT IS FUNCTIONAL!!!
+- Reworked creator notifications for YouTube, Twitch, and Kick
+- Improved internal event tracking for notifications
+- Created entitlements.js for the new entitlement system that controls how many notifications a person can have
+- Created /entitlement for viewing entitlement, as well as allowing users to contribute to a server
+- Added new user recognition with backups so new users in a server with the bot has entitlement
+- Reworked configuration permissions to allow permissions to include or exclude the ability to give others permissions
+- Expanded /permissions for adding, removing, and viewing permissions
+- Reworked channel configuration to have a fallback plan incase a channel does not exist
+- Added/adjusted database tables for entitlements, guilds, notifications, and configuration systems
+- Reworked owner functionality to work with new channel management system
+- Configured and fixed bugs within the storage/database process
+- Updated the /help command to include new features
+- Removed legacy notifications files
+- Next Up:
+  - Fix per-server logging
+  - Add welcome/googbye feature
+  - Add counting feature
+  - Allow /notifications delete to be all of one platform
+  - Create /update command
+
 ## v26.7.0 - Oct 2
 THE BOT IS BACK ONLINE!!!
 - Overall code reorganization
@@ -39,10 +61,10 @@ THE BOT IS BACK ONLINE!!!
 - Removed the old notification system from bot.js
 - Confirmed bot structure and that it starts
 - Confirmed /ping, /help, and /channels are working
-Next Up:
-- Rework notifications feature
-- Allow servers to choose if added roles/users to permissions can give others permissions
-- Test remaining untested features
+- Next Up:
+  - Rework notifications feature
+  - Allow servers to choose if added roles/users to permissions can give others permissions
+  - Test remaining untested features
 
 ## v26.6.3 - Oct 1
 - Removed old audit.json from June 30th debugging (unneeded)
