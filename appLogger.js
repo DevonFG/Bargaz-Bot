@@ -1,16 +1,15 @@
-import fs from "node:fs";
+import fs   from "node:fs";
 import path from "node:path";
 import util from "node:util";
 
 import * as config from "./config.js";
+import * as utils  from "./utils.js";
 
-const LOG_DIR = config.LOG_DIR;
-const CONSOLE_LOG_PATH =
-  path.join(LOG_DIR, "console.log");
-const ERROR_LOG_PATH =
-  path.join(LOG_DIR, "errors.log");
+const LOG_DIR          = config.LOG_DIR;
+const CONSOLE_LOG_PATH = path.join(LOG_DIR, "console.log");
+const ERROR_LOG_PATH   = path.join(LOG_DIR, "errors.log");
 
-let eventHandler = null;
+let eventHandler    = null;
 let consoleCaptured = false;
 
 /*
@@ -19,104 +18,60 @@ Setup
 =====================================================
 */
 
-export function initAppLogger() {
-  fs.mkdirSync(LOG_DIR, {
-    recursive: true
-  });
-}
+// Ensures the logs directory exists
+export function initAppLogger() { fs.mkdirSync(LOG_DIR, { recursive: true }); }
 
-/*
-=====================================================
-Owner Event Handler
-=====================================================
-*/
-
+// Registers the functions that should recieve future logging information
+// handler = String including the name of a function, or null
 export function setLogEventHandler(handler) {
   if (handler !== null && typeof handler !== "function") {
-    throw new TypeError(
-      "Application log event handler must be a function or null."
-    );
+    throw new TypeError("Application log event handler must be a function or null.");
   }
-
   eventHandler = handler;
 }
 
 /*
 =====================================================
-Formatting
+Formating
 =====================================================
 */
 
-function formatTimestamp() {
-  return new Date().toISOString();
-}
-
-function formatValue(value) {
-  if (value instanceof Error) {
-    return value.stack ?? value.message;
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return util.inspect(value, {
-    depth: 5,
-    colors: false
-  });
-}
-
+// Takes all the information that is to be logged and converts each piece into a readable message
+// values = Array [] with no restrictions on values inside the array
 function formatValues(values) {
   return values
-    .map(formatValue)
+    .map(value => {
+      if (value instanceof Error)    {return value.stack ?? value.message;}
+      if (typeof value === "string") {return value;}
+      return util.inspect(value, {depth: 5, colors: false});
+    })
     .join(" ");
 }
 
-/*
-=====================================================
-File Writing
-=====================================================
-*/
-
+// Adds a new line of text to the end of an existing file
+// This only exists as a function so logging is taken care of
+// filePath = String containing location and the name of the file to write to
+// line = String containing the text to add
 function appendToFile(filePath, line) {
   try {
-    fs.appendFileSync(
-      filePath,
-      `${line}\n`,
-      "utf8"
-    );
+    fs.appendFileSync(filePath, `${line}\n`, "utf8");
   } catch (error) {
-    /*
-     * Do not use console.error here.
-     *
-     * console.error may itself be captured by this
-     * logger, which could cause a logging loop.
-     */
-    process.stderr.write(
-      `BargazBot failed to write to ${filePath}: ` +
-      `${error?.stack ?? error}\n`
-    );
+    // Does not use normal logging system to prevent looping
+    process.stderr.write(`BargazBot failed to write to ${filePath}: ` + `${error?.stack ?? error}\n`);
   }
 }
 
-/*
-=====================================================
-Event Forwarding
-=====================================================
-*/
-
+// Sends new logging data to registered functions
+// event = Object {timestamp: String, level: String, message: String}
 function forwardEvent(event) {
-  if (!eventHandler) {
-    return;
-  }
+  if (!eventHandler) {return;}
   Promise.resolve(eventHandler(event))
     .catch(error => {
-      process.stderr.write(
-        "BargazBot log event handler failed: " +
-        `${error?.stack ?? error}\n`
-      );
+      process.stderr.write("BargazBot log event handler failed: " + `${error?.stack ?? error}\n`);
     });
 }
+
+// START BACK HERE!!!
 
 /*
 =====================================================
@@ -125,7 +80,7 @@ Core Logging
 */
 
 function write(level, values) {
-  const timestamp = formatTimestamp();
+  const timestamp = utils.newTimestamp();
   const message = formatValues(values);
 
   const line =

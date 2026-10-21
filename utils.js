@@ -3,6 +3,11 @@ export function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Creates a new timestamp of the current time
+export function newTimestamp() {
+  return new Date().toISOString();
+}
+
 // Converts a JavaScript date object into a readable format
 // e.g. "March 21 2026, 9:45 PM PDT"
 export function formatTimestamp(date) {

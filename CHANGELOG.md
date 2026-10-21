@@ -1,13 +1,25 @@
 # Changelog
 
-### Format: YY.FEATURE.PATCH
+### Format: YY.FEATURE.PATCH-NOTE.V
 - YY = The year the feature was introduced
 - FEATURE = The feature number from that year
     - When a new feature is released in a new year, FEATURE starts at 1
 - PATCH = Bug fixes since the last feature added (Year doesn't turn over till new feature is added)
+- NOTE = Optional development status "dev" or "beta" to indicate an in-progress version
+    - "dev" is refering to a version that has not been deployed while "beta" is deployed while undergoing testing
+- V = Optional revision number that corresponds with the current development status (NOTE), starting at 1
 
 A feature is when something is added/removed that changes what the user can do.
-Any other changes, regardless of size, is considered a patch. Very few exceptions.
+Any other changes, regardless of size, is considered a patch. (Very few exceptions)
+
+## v26.8.1-dev.1
+- Added new addition to versioning
+- Began code cleanup
+  - gitignore has been minimized
+  - appLogger functions have change in comments and some functions combined
+  - existing function to create a new timestamp was moved to utils from appLogger and renamed
+- Deleted saved database files
+  - Note: I'm not sure if this will delete it off of the Pi, so this is a test since I don't need those old copies anyways
 
 ## v26.8.0 - Oct 2
 THE BOT IS FUNCTIONAL!!!
