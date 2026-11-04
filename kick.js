@@ -231,10 +231,16 @@ function getResponseItems(data) {
 
 
 function getFirstResponseItem(data) {
-  return (
-    getResponseItems(data)[0] ??
-    null
-  );
+  if (
+    !Array.isArray(data) &&
+    !Array.isArray(data?.data)
+  ) {
+    throw new Error(
+      "Unexpected Kick API response: missing data array."
+    );
+  }
+
+  return getResponseItems(data)[0] ?? null;
 }
 
 
@@ -531,26 +537,24 @@ function getStreamTitle(
 }
 
 
-function getStreamThumbnail(
-  channel,
-  livestream
-) {
+function getStreamThumbnail(channel, livestream) {
   return (
+    channel.stream?.thumbnail?.url ??
+    (typeof channel.stream?.thumbnail === "string"
+      ? channel.stream.thumbnail
+      : null) ??
     livestream?.thumbnail?.url ??
     livestream?.thumbnail_url ??
-    channel?.stream?.thumbnail_url ??
-    channel?.livestream?.thumbnail?.url ??
     channel?.thumbnail_url ??
     null
   );
 }
 
 
-function getStartedAt(
-  channel,
-  livestream
-) {
+function getStartedAt(channel, livestream) {
   return (
+    channel.stream?.start_time ??
+    livestream?.start_time ??
     livestream?.created_at ??
     livestream?.started_at ??
     channel?.started_at ??
@@ -560,34 +564,14 @@ function getStartedAt(
 
 
 function isChannelLive(channel) {
-  if (
-    typeof channel.is_live ===
-    "boolean"
-  ) {
-    return channel.is_live;
-  }
+  const liveStatus =
+    channel.stream?.is_live ??
+    channel.is_live ??
+    channel.livestream?.is_live ??
+    channel.live_stream?.is_live;
 
-  if (
-    typeof channel.is_live ===
-    "number"
-  ) {
-    return channel.is_live === 1;
-  }
-
-  if (
-    typeof channel.livestream?.is_live ===
-    "boolean"
-  ) {
-    return channel.livestream.is_live;
-  }
-
-  if (
-    channel.livestream ||
-    channel.live_stream
-  ) {
-    return true;
-  }
-
+  if (typeof liveStatus === "boolean") { return liveStatus; }
+  if (typeof liveStatus === "number") { return liveStatus === 1; }
   return false;
 }
 
@@ -788,10 +772,7 @@ Change Detection
 =====================================================
 */
 
-function compareStream(
-  previous,
-  content
-) {
+function compareStream(previous, content) {
   if (!previous) {
     return {
       isNew: true,
@@ -803,50 +784,48 @@ function compareStream(
     };
   }
 
+  const parseStartTime = (value) => {
+    if (!value) return null;
+
+    const timestamp = Date.parse(value);
+
+    if (!Number.isFinite(timestamp)) {
+      return null;
+    }
+
+    const year = new Date(timestamp).getUTCFullYear();
+
+    return year > 1970 ? timestamp : null;
+  };
+
   const previousStart =
-    previous.started_at
-      ? new Date(
-          previous.started_at
-        ).getTime()
-      : null;
+    parseStartTime(previous.started_at);
 
   const currentStart =
-    content.startedAt
-      ? new Date(
-          content.startedAt
-        ).getTime()
-      : null;
+    parseStartTime(content.startedAt);
 
-  const sameSession =
-    previousStart &&
-    currentStart
-      ? previousStart ===
-        currentStart
-      : true;
+  const hasComparableStartTimes =
+    previousStart !== null &&
+    currentStart !== null;
+
+  const isNew =
+    hasComparableStartTimes &&
+    previousStart !== currentStart;
+
+  const reconnected =
+    !isNew &&
+    Boolean(previous.ended_at);
 
   return {
-    isNew:
-      !sameSession,
-
+    isNew,
     titleChanged:
-      previous.title !==
-      content.title,
-
+      previous.title !== content.title,
     thumbnailChanged:
-      previous.thumbnail_url !==
-      content.thumbnail,
-
+      previous.thumbnail_url !== content.thumbnail,
     wentLive:
-      !sameSession,
-
-    ended:
-      false,
-
-    reconnected:
-      sameSession &&
-      Boolean(
-        previous.ended_at
-      )
+      isNew || reconnected,
+    ended: false,
+    reconnected
   };
 }
 

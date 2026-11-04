@@ -96,7 +96,7 @@ function batteryMessage(percent) {
 function externalMessage() {
     return (
         "🟢 **BargazBot is running on external power.**\n" +
-        "If it looses power, this message will update "+
+        "If it loses power, this message will update "+
         "with the relevant information."
     );
 }

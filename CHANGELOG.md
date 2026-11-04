@@ -12,7 +12,15 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. (Very few exceptions)
 
-## v26.8.1-dev.1
+## v26.8.1-dev.2 - Nov 3
+- Fixed kick notifications
+  - Corrected livestream status detection
+  - Corrected stream start time and thumbnail retrieval
+  - Imporved detection of new streams and stream reconnections
+  - Added error reporting for unexpected kick API responses
+- Fixed a spelling error in upsNotifier.js
+
+## v26.8.1-dev.1 - Oct 20
 - Added new addition to versioning
 - Began code cleanup
   - gitignore has been minimized
