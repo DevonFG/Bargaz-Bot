@@ -12,6 +12,14 @@
 A feature is when something is added/removed that changes what the user can do.
 Any other changes, regardless of size, is considered a patch. (Very few exceptions)
 
+Note: A change from dev or beta to a release is not impacted by an untestable feature like needing to wait for a
+specific platform to have new content. In cases like that, the untested feature can be logged and the version released.
+
+## v26.8.1 - Nov 3
+- Tested if typo is fixed
+- Changed versioning info above to explain why this version, despite not being fully tested, is a release
+- Cannot test Kick notifications until a tracked channel posts content
+
 ## v26.8.1-dev.2 - Nov 3
 - Fixed kick notifications
   - Corrected livestream status detection
