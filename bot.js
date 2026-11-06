@@ -11,9 +11,10 @@ import * as appLogger       from "./appLogger.js";
 import * as owner           from "./owner.js";
 import * as platformManager from "./platformManager.js";
 import * as entitlements    from "./entitlements.js";
+import * as permissions     from "./permissions.js";
 
 import { startUpsNotifier } from "./upsNotifier.js";
-import { initDB }           from "./storage.js";
+import { initDB, getDB }    from "./storage.js";
 
 
 
@@ -53,6 +54,31 @@ process.on("unhandledRejection", reason => {console.error("Unhandled promise rej
 
 initDB();
 
+// Reconcile allocations against a server's current effective permissions
+async function reconcileGuildAllocations(guild) {
+  const allocations = getDB().prepare(`
+    SELECT user_id
+    FROM entitlement_allocations
+    WHERE guild_id = ?
+  `).all(guild.id);
+  for (const allocation of allocations) {
+    let member;
+    try {
+      member = await guild.members.fetch(allocation.user_id);
+    } catch (error) {
+      if (error.code === 10007) {
+        entitlements.removeGuildAllocations(allocation.user_id, guild.id);
+      } else {
+        console.error(`Failed to retrieve member ${allocation.user_id} in ${guild.id}:`, error);
+      }
+      continue;
+    }
+    if (!permissions.canUseCommand(member, "entitlement", "allocate")) {
+      entitlements.removeGuildAllocations(allocation.user_id, guild.id);
+    }
+  }
+}
+
 // When the bot first starts up and is ready
 client.once("clientReady", async () => {
   owner.initOwnerSystem(client);
@@ -68,6 +94,13 @@ client.once("clientReady", async () => {
       console.log(`Registered ${members.filter(member => !member.user.bot).size} users from ${guild.name}.`);
     } catch (error) { console.error(`Failed to register users from ${guild.anme}:`,error);
   }
+}
+
+// Reconcile allocations that lost authorization while the bot was offline
+for (const guild of client.guilds.cache.values()) {
+  try {
+    await reconcileGuildAllocations(guild);
+  } catch (error) {console.error(`Failed to reconcile allocations for ${guild.id}:`, error);}
 }
 
   await startUpsNotifier(client);
@@ -89,6 +122,51 @@ client.on(
     );
   }
 );
+
+// Remove server allocations when a member loses entitlement allocation access
+client.on("guildMemberUpdate", async (oldMember, newMember) => {
+  try {
+    const previouslyAllowed = permissions.canUseCommand(oldMember, "entitlement", "allocate");
+    const currentlyAllowed  = permissions.canUseCommand(newMember, "entitlement", "allocate");
+    if (previouslyAllowed && !currentlyAllowed) {
+      entitlements.removeGuildAllocations(newMember.id, newMember.guild.id);
+    }
+  } catch (error) {console.error("Failed to process member permission changes:", error);}
+});
+
+// Remove a member's server allocations when they leave
+client.on("guildMemberRemove", member => {
+  try {
+    entitlements.removeGuildAllocations(member.id, member.guild.id);
+  } catch (error) {console.error("Failed to remove departing member allocations:", error);}
+});
+
+// Reconcile allocations when a server role is deleted
+client.on("roleDelete", async role => {
+  try {
+    await reconcileGuildAllocations(role.guild);
+  } catch (error) {console.error("Failed to reconcile allocations after role deletion:", error);}
+});
+
+// Reconcile allocations when a role's Administrator permission changes
+client.on("roleUpdate", async (oldRole, newRole) => {
+  try {
+    const oldAdmin = oldRole.permissions.has(discord.PermissionFlagsBits.Administrator);
+    const newAdmin = newRole.permissions.has(discord.PermissionFlagsBits.Administrator);
+    if (oldAdmin && !newAdmin) {
+      await reconcileGuildAllocations(newRole.guild);
+    }
+  } catch (error) {console.error("Failed to reconcile allocations after role update:", error);}
+});
+
+// Reconcile allocations when server ownership changes
+client.on("guildUpdate", async (oldGuild, newGuild) => {
+  try {
+    if (oldGuild.ownerId !== newGuild.ownerId) {
+      await reconcileGuildAllocations(newGuild);
+    }
+  } catch (error) {console.error("Failed to reconcile allocations after ownership change:", error);}
+});
 
 // When the bot joins a new server setup guild
 client.on("guildCreate", async (guild) => {

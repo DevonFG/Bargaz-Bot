@@ -1,9 +1,3 @@
-/*
-=====================================================
-BargazBot Database Structure
-=====================================================
-*/
-
 import Database from "better-sqlite3";
 import { DB_PATH } from "./config.js";
 
@@ -14,7 +8,6 @@ export function initDB() {
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
@@ -173,6 +166,28 @@ export function initDB() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (guild_id, permission_type, target_id),
       FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS guild_permission_profiles (
+      guild_id TEXT NOT NULL,
+      permission_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      access_level TEXT NOT NULL DEFAULT 'configuration'
+        CHECK (access_level IN ('full', 'configuration', 'custom')),
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (guild_id, permission_type, target_id),
+      FOREIGN KEY (guild_id, permission_type, target_id)
+        REFERENCES guild_permissions(guild_id, permission_type, target_id)
+        ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS guild_command_permissions (
+      guild_id TEXT NOT NULL,
+      permission_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      command_name TEXT NOT NULL,
+      allowed INTEGER NOT NULL DEFAULT 0
+        CHECK (allowed IN (0,1)),
+      PRIMARY KEY (guild_id, permission_type, target_id, command_name),
+      FOREIGN KEY (guild_id, permission_type, target_id)
+        REFERENCES guild_permissions(guild_id, permission_type, target_id)
+        ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS notification_messages (
       guild_id TEXT NOT NULL,
       platform TEXT NOT NULL,
@@ -187,15 +202,30 @@ export function initDB() {
   `);
 
 // Note: Adding new columns of data requires a 1-time command in addition to adding to CREATE TABLE
-
+// REMOVE THE db.prepare DURING THE NEXT UPDATE!!!
+db.prepare(`
+  INSERT OR IGNORE INTO guild_permission_profiles (
+    guild_id,
+    permission_type,
+    target_id,
+    access_level
+  )
+  SELECT
+    guild_id,
+    permission_type,
+    target_id,
+    CASE
+      WHEN can_manage_permissions = 1 THEN 'full'
+      ELSE 'configuration'
+    END
+  FROM guild_permissions
+`).run();
   console.log("SQLite initialized at:", DB_PATH);
   return db;
 }
 
 // Get active DB connection
 export function getDB() {
-  if (!db) {
-    throw new Error("SQLite not initialized. Call initDB() first.");
-  }
+  if (!db) {throw new Error("SQLite not initialized. Call initDB() first.");}
   return db;
 }

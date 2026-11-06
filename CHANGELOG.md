@@ -15,6 +15,21 @@ Any other changes, regardless of size, is considered a patch. (Very few exceptio
 Note: A change from dev or beta to a release is not impacted by an untestable feature like needing to wait for a
 specific platform to have new content. In cases like that, the untested feature can be logged and the version released.
 
+## v26.9.0-dev.1 - Nov 5
+- Added new levels of configuration to what permissions a person can have to configure BargazBot
+- Added individual command and subcommand permissions for users and roles
+- Added /permissions edit
+- Configured /permissions list for a more detailed display of information
+- Added interactive permission configuration menus, moving away from full configuration in the command lines itself
+- Added automatic entitlement allocation removal when a user loses access to /entitlement allocate
+- Reworked /permissions add and permissions remove to support the new menu-based system
+- Server administrators now have default full access to configure BargazBot
+- Permission grants from multiple users and roles are now combined in one process
+- Updated permission management to support @everyone
+- Updated permission-change logging to record previous and new access levels
+- Prevented users from receiving /entitlement allocation without /entitlement remove
+- Prevented conflicting legacy code from rewriting new changes
+
 ## v26.8.1 - Nov 3
 - Tested if typo is fixed
 - Changed versioning info above to explain why this version, despite not being fully tested, is a release
