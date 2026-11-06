@@ -13,8 +13,9 @@ import * as platformManager from "./platformManager.js";
 import * as entitlements    from "./entitlements.js";
 import * as permissions     from "./permissions.js";
 
-import { startUpsNotifier } from "./upsNotifier.js";
-import { initDB, getDB }    from "./storage.js";
+import { startUpsNotifier }                             from "./upsNotifier.js";
+import { initDB, getDB, closeDB }                       from "./storage.js";
+import { registerShutdownHandler, isShutdownRequested } from "./shutdownCoordinator.js";
 
 
 
@@ -34,7 +35,7 @@ app.get("/health", (req, res) => {
 console.log("REACHED LISTEN STEP", PORT); //Temporary code for debugging
 
 // Start server
-app.listen(PORT, () => { console.log(`Health server listening on ${PORT}`); });
+const server = app.listen(PORT, () => {console.log(`Health server listening on ${PORT}`);});
 
 // Set up the Discord client with the permissions it needs
 const client = new discord.Client({
@@ -53,6 +54,28 @@ process.on("uncaughtException", error => {console.error("Uncaught exception:", e
 process.on("unhandledRejection", reason => {console.error("Unhandled promise rejection:", reason);});
 
 initDB();
+
+
+let shutdownStarted = false;
+let servicesClosed = false;
+async function closeHealthServer(phase) {
+  if (!server.listening) {return;}
+  if (phase === 2) {server.closeAllConnections();}
+  await new Promise((resolve, reject) => {server.close(error => error && error.code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve());});
+}
+
+registerShutdownHandler("bot-services", async phase => {
+  if (servicesClosed) {return;}
+  shutdownStarted = true;
+  console.log(`Stopping BargazBot services (Stage ${phase}).`);
+  platformManager.stopPlatformManager();
+  if (phase === 1)      {await platformManager.drainPlatformJobs();}
+  if (client.isReady()) {await client.destroy(); console.log("Discord client disconnected.");}
+  await closeHealthServer(phase);
+  if (!closeDB()) {throw new Error("SQLite could not close.");}
+  servicesClosed = true;
+  console.log("BargazBot services stopped.");
+});
 
 // Reconcile allocations against a server's current effective permissions
 async function reconcileGuildAllocations(guild) {
@@ -102,17 +125,19 @@ for (const guild of client.guilds.cache.values()) {
     await reconcileGuildAllocations(guild);
   } catch (error) {console.error(`Failed to reconcile allocations for ${guild.id}:`, error);}
 }
-
+  if (isShutdownRequested()) {return;}
   await startUpsNotifier(client);
+  if (isShutdownRequested()) {return;}
   await commands.registerCommands(client);
+  if (isShutdownRequested()) {return;}
   await platformManager.startPlatformManager(client);
-
 });
 
 // When a new member joins a server
 client.on(
   "guildMemberAdd",
   member => {
+    if (isShutdownRequested()) {return;}
     if (member.user.bot) {
       return;
     }
@@ -125,6 +150,7 @@ client.on(
 
 // Remove server allocations when a member loses entitlement allocation access
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
+  if (isShutdownRequested()) {return;}
   try {
     const previouslyAllowed = permissions.canUseCommand(oldMember, "entitlement", "allocate");
     const currentlyAllowed  = permissions.canUseCommand(newMember, "entitlement", "allocate");
@@ -136,6 +162,7 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
 
 // Remove a member's server allocations when they leave
 client.on("guildMemberRemove", member => {
+  if (isShutdownRequested()) {return;}
   try {
     entitlements.removeGuildAllocations(member.id, member.guild.id);
   } catch (error) {console.error("Failed to remove departing member allocations:", error);}
@@ -143,6 +170,7 @@ client.on("guildMemberRemove", member => {
 
 // Reconcile allocations when a server role is deleted
 client.on("roleDelete", async role => {
+  if (isShutdownRequested()) {return;}
   try {
     await reconcileGuildAllocations(role.guild);
   } catch (error) {console.error("Failed to reconcile allocations after role deletion:", error);}
@@ -150,6 +178,7 @@ client.on("roleDelete", async role => {
 
 // Reconcile allocations when a role's Administrator permission changes
 client.on("roleUpdate", async (oldRole, newRole) => {
+  if (isShutdownRequested()) {return;}
   try {
     const oldAdmin = oldRole.permissions.has(discord.PermissionFlagsBits.Administrator);
     const newAdmin = newRole.permissions.has(discord.PermissionFlagsBits.Administrator);
@@ -161,6 +190,7 @@ client.on("roleUpdate", async (oldRole, newRole) => {
 
 // Reconcile allocations when server ownership changes
 client.on("guildUpdate", async (oldGuild, newGuild) => {
+  if (isShutdownRequested()) {return;}
   try {
     if (oldGuild.ownerId !== newGuild.ownerId) {
       await reconcileGuildAllocations(newGuild);
@@ -170,6 +200,7 @@ client.on("guildUpdate", async (oldGuild, newGuild) => {
 
 // When the bot joins a new server setup guild
 client.on("guildCreate", async (guild) => {
+  if (isShutdownRequested()) {return;}
   try {
     await channelManager.setupGuild(guild);
     console.log(`Set up BargazBot channels for guild: ${guild.name} (${guild.id})`);
@@ -180,12 +211,19 @@ client.on("guildCreate", async (guild) => {
   }
 });
 
-client.on("messageCreate", async (message) => {
+client.on("messageCreate", async message => {
+  if (isShutdownRequested()) {return;}
   await owner.handleOwnerMessage(message);
 });
 
 // Start setup of /commands
-client.on("interactionCreate", async (interaction) => {
+client.on("interactionCreate", async interaction => {
+  if (isShutdownRequested()) {
+    if (interaction.isRepliable()) {
+      await interaction.reply({content: "BargazBot is shutting down. Please try again later.", ephemeral: true}).catch(() => {});
+    }
+    return;
+  }
   await commands.handleInteraction(interaction);
 });
 

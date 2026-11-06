@@ -15,6 +15,27 @@ Any other changes, regardless of size, is considered a patch. (Very few exceptio
 Note: A change from dev or beta to a release is not impacted by an untestable feature like needing to wait for a
 specific platform to have new content. In cases like that, the untested feature can be logged and the version released.
 
+## v26.9.0-dev.3 - Nov 6
+- Reworked UPS monitoring and shutdown process
+  - Added network connection information to UPS status messages
+  - Added Ethernet and Wi-Fi detection, including Wi-Fi signal strength
+  - Added internet connectivity monitoring with multiple endpoints
+  - Added automatic shutdown after 2 minutes without an internet connection
+  - Preserved existing UPS power and battery monitoring
+- Reworked graceful shutdown process
+  - Added a two-stage shutdown system with timeouts
+  - Added shutdown handlers for stopping bot services
+  - Added tracking of active platform jobs before shutdown
+  - Added SQLite database closure during shutdown
+  - Added fallback shutdown handling if graceful shutdown cannot complete
+  - Preserved existing UPS shutdown readiness file
+- Fixed BargazBot channel configuration
+  - Added separate channel settings for BargazBot Updates and Status
+  - Added Updates channel field and migration to SQLite
+  - Updated /channels set and /channels list
+  - Changed BargazBot update broadcasts to use the configured Updates channel
+  - Preserved existing channel fallback behavior
+
 ## v26.9.0-dev.2 - Nov 5
 - /notification refresh rework
   - Command now grabs most recent content, including a stream that started before the channel was added to being tracked with the bot

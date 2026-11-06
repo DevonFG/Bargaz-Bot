@@ -53,6 +53,7 @@ export function initDB() {
       welcome_channel_id TEXT,
       goodbye_channel_id TEXT,
       logs_channel_id TEXT,
+      updates_channel_id TEXT,
       status_channel_id TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -209,6 +210,14 @@ export function initDB() {
       ON notification_refresh_usage (guild_id, platform, used_at);
   `);
 
+
+const guildSettingsColumns = db.prepare("PRAGMA table_info(guild_settings)").all().map(column => column.name);
+if (!guildSettingsColumns.includes("updates_channel_id")) {
+  db.exec("ALTER TABLE guild_settings ADD COLUMN updates_channel_id TEXT");
+  db.exec("UPDATE guild_settings SET updates_channel_id = COALESCE(announcement_channel_id, status_channel_id, logs_channel_id)");
+  console.log("Added BargazBot Updates channel setting.");
+}
+
 // Note: Adding new columns of data requires a 1-time command in addition to adding to CREATE TABLE
 // REMOVE THE db.prepare DURING THE NEXT UPDATE!!!
 db.prepare(`
@@ -232,8 +241,21 @@ db.prepare(`
   return db;
 }
 
+
 // Get active DB connection
 export function getDB() {
+  if (databaseClosing) {throw new Error("SQLite is shutting down. New database operations are disabled.");}
   if (!db) {throw new Error("SQLite not initialized. Call initDB() first.");}
   return db;
+}
+
+
+let databaseClosing = false;
+export function isDatabaseClosing() {return databaseClosing;}
+export function closeDB() {
+  if (databaseClosing) {return !db || !db.open;}
+  databaseClosing = true;
+  if (!db || !db.open) {return true;}
+  try {db.close(); console.log("SQLite database closed.");                   return true;
+  } catch (error) {console.error("Unable to close SQLite database:", error); return false;}
 }

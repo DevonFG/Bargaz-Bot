@@ -400,12 +400,7 @@ async function broadcastOwnerUpdate(
        * - a new #bargazbot must be created
        */
 
-      const channel =
-        await channelManager
-          .ensureChannel(
-            guild,
-            "notifications"
-          );
+      const channel = await channelManager.ensureChannel(guild, "updates");
 
       if (
         !channel?.isTextBased() ||

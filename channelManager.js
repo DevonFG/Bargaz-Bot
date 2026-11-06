@@ -9,16 +9,12 @@ Channel Purposes
 */
 
 const CHANNEL_COLUMNS = {
-  notifications:
-    "announcement_channel_id",
-  welcome:
-    "welcome_channel_id",
-  goodbye:
-    "goodbye_channel_id",
-  logs:
-    "logs_channel_id",
-  status:
-    "status_channel_id"
+  notifications: "announcement_channel_id",
+  welcome: "welcome_channel_id",
+  goodbye: "goodbye_channel_id",
+  logs: "logs_channel_id",
+  updates: "updates_channel_id",
+  status: "status_channel_id"
 };
 
 
@@ -173,57 +169,27 @@ Channel Assignments
 =====================================================
 */
 
-function saveDefaultChannelAssignments(
-  guildId,
-  channelId
-) {
+
+function saveDefaultChannelAssignments(guildId, channelId) {
   const db = getDB();
 
   db.prepare(`
     INSERT INTO guild_settings (
-      guild_id,
-      announcement_channel_id,
-      welcome_channel_id,
-      goodbye_channel_id,
-      logs_channel_id,
-      status_channel_id,
-      created_at,
-      updated_at
+      guild_id, announcement_channel_id, welcome_channel_id, goodbye_channel_id,
+      logs_channel_id, updates_channel_id, status_channel_id, created_at, updated_at
     )
-    VALUES (
-      ?,
-      ?,
-      ?,
-      ?,
-      ?,
-      ?,
-      CURRENT_TIMESTAMP,
-      CURRENT_TIMESTAMP
-    )
-
-    ON CONFLICT(guild_id)
-    DO UPDATE SET
-      announcement_channel_id =
-        excluded.announcement_channel_id,
-      welcome_channel_id =
-        excluded.welcome_channel_id,
-      goodbye_channel_id =
-        excluded.goodbye_channel_id,
-      logs_channel_id =
-        excluded.logs_channel_id,
-      status_channel_id =
-        excluded.status_channel_id,
-      updated_at =
-        CURRENT_TIMESTAMP
-  `).run(
-    guildId,
-    channelId,
-    channelId,
-    channelId,
-    channelId,
-    channelId
-  );
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(guild_id) DO UPDATE SET
+      announcement_channel_id = excluded.announcement_channel_id,
+      welcome_channel_id = excluded.welcome_channel_id,
+      goodbye_channel_id = excluded.goodbye_channel_id,
+      logs_channel_id = excluded.logs_channel_id,
+      updates_channel_id = excluded.updates_channel_id,
+      status_channel_id = excluded.status_channel_id,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(guildId, channelId, channelId, channelId, channelId, channelId, channelId);
 }
+
 
 
 export function setChannel(
@@ -270,6 +236,7 @@ export function getChannelAssignments(
         welcome_channel_id,
         goodbye_channel_id,
         logs_channel_id,
+        updates_channel_id,
         status_channel_id
       FROM guild_settings
       WHERE guild_id = ?
@@ -382,6 +349,15 @@ async function findExistingBargazBotChannel(
           .status_channel_id,
         assignments
           .announcement_channel_id
+      ];
+      break;
+      
+    case "updates":
+      channelIds = [
+        assignments.updates_channel_id,
+        assignments.announcement_channel_id,
+        assignments.status_channel_id,
+        assignments.logs_channel_id
       ];
       break;
 

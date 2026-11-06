@@ -196,6 +196,7 @@ const commands = [
           {name:"Welcome messages",              value:"welcome"},
           {name:"Goodbye messages",              value:"goodbye"},
           {name:"Server logs",                   value:"logs"},
+          {name:"BargazBot updates",             value:"updates"},
           {name:"BargazBot status",              value:"status"}
         )
       )
@@ -389,6 +390,7 @@ async function handleChannelList(interaction) {
         {name:"Welcome messages",              value:formatChannel(settings?.welcome_channel_id)},
         {name:"Goodbye messages",              value:formatChannel(settings?.goodbye_channel_id)},
         {name:"Server logs",                   value:formatChannel(settings?.logs_channel_id)},
+        {name:"BargazBot Updates",             value:formatChannel(settings?.updates_channel_id)},
         {name:"Status",                        value:formatChannel(settings?.status_channel_id)}
       )
       .setTimestamp();

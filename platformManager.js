@@ -2,6 +2,7 @@ import * as youtube from "./youtube.js";
 import * as twitch from "./twitch.js";
 import * as kick from "./kick.js";
 import * as notifications from "./notifications.js";
+import {isShutdownRequested} from "./shutdownCoordinator.js";
 
 const DEFAULT_CHECK_INTERVAL = 300000;
 const METADATA_REFRESH_INTERVAL = 60000;
@@ -16,6 +17,27 @@ let cleanupInterval = null;
 let monitorRunning = false;
 let metadataRunning = false;
 
+
+
+const activeJobs = new Set();
+let stopping = false;
+
+function trackJob(promise) {
+  const job = Promise.resolve(promise);
+  activeJobs.add(job);
+  job.finally(() => activeJobs.delete(job)).catch(() => {});
+  return job;
+}
+
+export async function drainPlatformJobs() {
+  while (activeJobs.size > 0 || monitorRunning || metadataRunning) {
+    if (activeJobs.size > 0) {
+      await Promise.allSettled([...activeJobs]);
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+}
 
 /*
 =====================================================
@@ -279,6 +301,7 @@ Main Platform Check
 */
 
 export async function checkPlatforms() {
+  if (stopping || isShutdownRequested()) {return;}
   if (!client) {
     throw new Error(
       "Platform manager has not been started."
@@ -296,11 +319,11 @@ export async function checkPlatforms() {
   monitorRunning = true;
 
   try {
-    await Promise.allSettled([
+    await trackJob(Promise.allSettled([
       checkYouTube(),
       checkTwitch(),
       checkKick()
-    ]);
+    ]));
 
   } finally {
     monitorRunning = false;
@@ -315,6 +338,7 @@ YouTube Metadata Refresh
 */
 
 async function refreshYouTubeMetadata() {
+  if (stopping || isShutdownRequested()) {return;}
   if (
     !client ||
     metadataRunning
@@ -325,9 +349,7 @@ async function refreshYouTubeMetadata() {
   metadataRunning = true;
 
   try {
-    const results =
-      await youtube
-        .refreshActiveContent();
+    const results = await trackJob(youtube.refreshActiveContent());
 
     for (const result of results) {
       try {
@@ -364,6 +386,7 @@ Content Cleanup
 */
 
 function cleanupContent() {
+  if (stopping || isShutdownRequested()) {return;}
   try {
     const youtubeRemoved =
       youtube.cleanupEndedContent();
@@ -400,9 +423,8 @@ Monitor Startup
 =====================================================
 */
 
-export async function startPlatformManager(
-  discordClient
-) {
+export async function startPlatformManager(discordClient) {
+  if (stopping || isShutdownRequested()) {return;}
   if (client) {
     console.warn(
       "Platform manager is already running."
@@ -421,11 +443,10 @@ export async function startPlatformManager(
   try {
     await checkPlatforms();
   } catch (error) {
-    console.error(
-      "Initial platform check failed:",
-      error
-    );
+    console.error("Initial platform check failed:", error);
   }
+
+  if (stopping || isShutdownRequested()) {return;}
 
   monitorInterval =
     setInterval(
@@ -477,37 +498,11 @@ Monitor Shutdown
 */
 
 export function stopPlatformManager() {
-  if (monitorInterval) {
-    clearInterval(
-      monitorInterval
-    );
-
-    monitorInterval = null;
-  }
-
-  if (metadataInterval) {
-    clearInterval(
-      metadataInterval
-    );
-
-    metadataInterval = null;
-  }
-
-  if (cleanupInterval) {
-    clearInterval(
-      cleanupInterval
-    );
-
-    cleanupInterval = null;
-  }
-
-  client = null;
-  monitorRunning = false;
-  metadataRunning = false;
-
-  console.log(
-    "BargazBot platform manager stopped."
-  );
+  stopping = true;
+  if (monitorInterval) {clearInterval(monitorInterval); monitorInterval = null;}
+  if (metadataInterval) {clearInterval(metadataInterval); metadataInterval = null;}
+  if (cleanupInterval) {clearInterval(cleanupInterval); cleanupInterval = null;}
+  console.log("BargazBot platform manager stopped accepting new work.");
 }
 
 
@@ -517,9 +512,8 @@ Manual Platform Check
 =====================================================
 */
 
-export async function checkPlatform(
-  platform
-) {
+export async function checkPlatform(platform) {
+  if (stopping || isShutdownRequested()) {return;}
   validatePlatform(platform);
 
   if (!client) {
@@ -529,14 +523,9 @@ export async function checkPlatform(
   }
 
   switch (platform) {
-    case "youtube":
-      return checkYouTube();
-
-    case "twitch":
-      return checkTwitch();
-
-    case "kick":
-      return checkKick();
+    case "youtube": return trackJob(checkYouTube());
+    case "twitch": return trackJob(checkTwitch());
+    case "kick": return trackJob(checkKick());
   }
 }
 
