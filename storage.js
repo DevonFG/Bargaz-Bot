@@ -199,6 +199,14 @@ export function initDB() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (guild_id, platform, content_id, event_type),
       FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS notification_refresh_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      used_at INTEGER NOT NULL,
+      FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE);
+    CREATE INDEX IF NOT EXISTS idx_notification_refresh_usage
+      ON notification_refresh_usage (guild_id, platform, used_at);
   `);
 
 // Note: Adding new columns of data requires a 1-time command in addition to adding to CREATE TABLE

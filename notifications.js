@@ -6,77 +6,33 @@ import * as twitch         from "./twitch.js";
 import * as kick           from "./kick.js";
 import * as entitlements   from "./entitlements.js";
 
-const PLATFORM_COLORS = {
-  youtube: 0xFF0000,
-  twitch: 0x9146FF,
-  kick: 0x53FC18
-};
+const PLATFORM_COLORS       =  {youtube: 0xFF0000,  twitch: 0x9146FF, kick: 0x53FC18};
+const PLATFORM_NAMES        =  {youtube: "YouTube", twitch: "Twitch", kick: "Kick"};
+const PLATFORM_EMOJIS       =  {youtube: "🔴",      twitch: "🟣",    kick: "🟢"};
+const PLATFORM_KEYS         =  ["youtube", "twitch", "kick"];
+const DEFAULT_REFRESH_LIMIT = 2;
+const REFRESH_WINDOW_MS     = 6 * 60 * 60 * 1000;
 
-const PLATFORM_NAMES = {
-  youtube: "YouTube",
-  twitch: "Twitch",
-  kick: "Kick"
-};
-
-const PLATFORM_EMOJIS = {
-  youtube: "🔴",
-  twitch: "🟣",
-  kick: "🟢"
-};
-
-const PLATFORM_KEYS = [
-  "youtube",
-  "twitch",
-  "kick"
-];
-
-
-/*
-=====================================================
-Platform Helpers
-=====================================================
-*/
 
 function normalizePlatform(platform) {
-  const value =
-    String(platform ?? "")
-      .trim()
-      .toLowerCase();
-
-  if (!PLATFORM_KEYS.includes(value)) {
-    throw new Error(
-      `Unknown notification platform: ${platform}`
-    );
-  }
-
+  const value = String(platform ?? "").trim().toLowerCase();
+  if (!PLATFORM_KEYS.includes(value)) { throw new Error(`Unknown notification platform: ${platform}`);}
   return value;
 }
 
-
 function getPlatformModule(platform) {
   switch (normalizePlatform(platform)) {
-    case "youtube":
-      return youtube;
-
-    case "twitch":
-      return twitch;
-
-    case "kick":
-      return kick;
+    case "youtube":return youtube;
+    case "twitch": return twitch;
+    case "kick":   return kick;
   }
 }
 
-
 function getSubscriptionTable(platform) {
   switch (normalizePlatform(platform)) {
-    case "youtube":
-      return "guild_youtube_subs";
-
-    case "twitch":
-      return "guild_twitch_subs";
-
-    case "kick":
-      return "guild_kick_subs";
+    case "youtube":return "guild_youtube_subs";
+    case "twitch": return "guild_twitch_subs";
+    case "kick":   return "guild_kick_subs";
   }
 }
 
@@ -360,6 +316,12 @@ Notification Message Storage
 =====================================================
 */
 
+
+function getTrackingContentId(content) {
+  return content.platform === "kick" ? String(content.channelId) : String(content.id);
+}
+
+
 function getStoredMessage(
   guildId,
   platform,
@@ -392,13 +354,15 @@ function getStoredMessage(
 }
 
 
+
 function saveStoredMessage(
   guildId,
   platform,
   contentId,
   eventType,
   channelId,
-  messageId
+  messageId,
+  resetTracking = false
 ) {
   const db = getDB();
 
@@ -434,6 +398,11 @@ function saveStoredMessage(
         excluded.discord_channel_id,
       discord_message_id =
         excluded.discord_message_id,
+      created_at =
+        CASE WHEN ? = 1
+          THEN CURRENT_TIMESTAMP
+          ELSE notification_messages.created_at
+        END,
       updated_at =
         CURRENT_TIMESTAMP
   `).run(
@@ -442,7 +411,8 @@ function saveStoredMessage(
     contentId,
     eventType,
     channelId,
-    messageId
+    messageId,
+    resetTracking ? 1 : 0
   );
 }
 
@@ -1092,7 +1062,8 @@ async function sendNewNotification(
   guild,
   content,
   eventType,
-  subscription
+  subscription,
+  resetTracking = false
 ) {
   const notificationChannel =
     await resolveNotificationChannel(
@@ -1119,14 +1090,15 @@ async function sendNewNotification(
       ]
     });
 
-  saveStoredMessage(
-    guild.id,
-    content.platform,
-    content.id,
-    eventType,
-    notificationChannel.id,
-    message.id
-  );
+    saveStoredMessage(
+      guild.id,
+      content.platform,
+      getTrackingContentId(content),
+      eventType,
+      notificationChannel.id,
+      message.id,
+      resetTracking
+    );
 
   return message;
 }
@@ -1148,7 +1120,7 @@ async function editExistingNotification(
     getStoredMessage(
       guild.id,
       content.platform,
-      content.id,
+      getTrackingContentId(content),
       eventType
     );
 
@@ -1166,7 +1138,7 @@ async function editExistingNotification(
     deleteStoredMessage(
       guild.id,
       content.platform,
-      content.id,
+      getTrackingContentId(content),
       eventType
     );
 
@@ -1228,11 +1200,11 @@ async function sendOrUpdateGuildNotification(
     getStoredMessage(
       guildId,
       content.platform,
-      content.id,
+      getTrackingContentId(content),
       eventType
     );
-
-  if (storedMessage) {
+  
+  if (storedMessage && !(content.platform === "kick" && changes?.isNew)) {
     const edited =
       await editExistingNotification(
         guild,
@@ -1249,19 +1221,22 @@ async function sendOrUpdateGuildNotification(
     }
   }
 
-  if (
-    changes?.ended &&
-    !storedMessage
-  ) {
-    return null;
-  }
+  if (changes?.ended) return null;
+
+  const isNewAnnouncement =
+    changes?.isNew ||
+    changes?.wentLive ||
+    changes?.reconnected;
+
+  if (!isNewAnnouncement) return null;
 
   const sent =
     await sendNewNotification(
       guild,
       content,
       eventType,
-      subscription
+      subscription,
+      content.platform === "kick" && Boolean(changes?.isNew)
     );
 
   if (!sent) {
@@ -1430,99 +1405,161 @@ export async function processYouTubeResults(
 
 /*
 =====================================================
+Manual Refresh Usage
+=====================================================
+*/
+
+function reserveRefresh(guildId,platform) {
+  const db = getDB();
+  const now = Date.now();
+  const cutoff = now - REFRESH_WINDOW_MS;
+
+  return db.transaction(() => {
+    db.prepare(`DELETE FROM notification_refresh_usage WHERE used_at <= ?`).run(cutoff);
+
+    const usage = db.prepare(`
+      SELECT COUNT(*) AS count, MIN(used_at) AS oldest
+      FROM notification_refresh_usage
+      WHERE guild_id = ? AND platform = ?
+    `).get(guildId,platform);
+
+    if (usage.count >= DEFAULT_REFRESH_LIMIT) {
+      return {
+        allowed:false,
+        remaining:0,
+        retryAt:usage.oldest + REFRESH_WINDOW_MS
+      };
+    }
+
+    const result = db.prepare(`
+      INSERT INTO notification_refresh_usage (guild_id,platform,used_at)
+      VALUES (?,?,?)
+    `).run(guildId,platform,now);
+
+    return {
+      allowed:true,
+      usageId:result.lastInsertRowid,
+      remaining:DEFAULT_REFRESH_LIMIT - usage.count - 1
+    };
+  })();
+}
+
+function releaseRefresh(usageId) {
+  getDB().prepare(`DELETE FROM notification_refresh_usage WHERE id = ?`).run(usageId);
+}
+
+
+function getNewestRefreshResult(results,channelId) {
+  const eligible = results.filter(result =>
+    result?.content?.id &&
+    String(result.content.channelId) === String(channelId) &&
+    !result.content.isEnded
+  );
+
+  const getTime = content => {
+    const value = content.actualStartTime ??
+      content.startedAt ??
+      content.publishedAt ??
+      content.scheduledStartTime ??
+      content.discoveredAt;
+
+    const timestamp = value ? Date.parse(value) : 0;
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  };
+
+  eligible.sort((a,b) =>
+    Number(Boolean(b.content.isLive)) - Number(Boolean(a.content.isLive)) ||
+    getTime(b.content) - getTime(a.content)
+  );
+
+  return eligible[0] ?? null;
+}
+
+
+/*
+=====================================================
 Manual Subscription Refresh
 =====================================================
 */
 
-export async function refreshSubscription(
-  client,
-  guildId,
-  nickname,
-  platform
-) {
-  const subscription =
-    findGuildSubscription(
-      guildId,
-      nickname,
-      platform
-    );
 
-  if (!subscription) {
+
+export async function refreshSubscription(client,guildId,nickname,platform) {
+  const subscription = findGuildSubscription(guildId,nickname,platform);
+  if (!subscription) return {success:false,reason:"not-found"};
+
+  const key = subscription.platform;
+  const platformModule = getPlatformModule(key);
+  const allowance = reserveRefresh(guildId,key);
+
+  if (!allowance.allowed) {
     return {
-      success: false,
-      reason: "not-found"
+      success:false,
+      reason:"refresh-limit",
+      remaining:0,
+      retryAt:allowance.retryAt
     };
   }
 
-  const platformModule =
-    getPlatformModule(
-      subscription.platform
-    );
+  let messagePosted = false;
 
-  let refreshResult = null;
+  try {
+    let refreshResult = null;
 
-  if (
-    typeof platformModule.refreshChannel ===
-    "function"
-  ) {
-    refreshResult =
-      await platformModule.refreshChannel(
-        subscription.channelId
-      );
+    if (typeof platformModule.refreshChannel === "function") {
+      refreshResult = await platformModule.refreshChannel(subscription.channelId);
+    } else if (typeof platformModule.checkChannel === "function") {
+      refreshResult = await platformModule.checkChannel(subscription.channelId);
+    } else if (typeof platformModule.checkChannels === "function") {
+      refreshResult = await platformModule.checkChannels([subscription.channelId]);
+    } else if (typeof platformModule.pollChannel === "function") {
+      refreshResult = await platformModule.pollChannel(subscription.channelId);
+    } else {
+      throw new Error(`No refresh function available for ${key}`);
+    }
 
-  } else if (
-    typeof platformModule.checkChannel ===
-    "function"
-  ) {
-    refreshResult =
-      await platformModule.checkChannel(
-        subscription.channelId
-      );
+    const results = Array.isArray(refreshResult)?refreshResult:refreshResult?[refreshResult]:[];
+    const result = getNewestRefreshResult(results,subscription.channelId);
 
-  } else if (
-    typeof platformModule.checkChannels ===
-    "function"
-  ) {
-    refreshResult =
-      await platformModule.checkChannels(
-        [
-          subscription.channelId
-        ]
-      );
+    if (!result) {
+      releaseRefresh(allowance.usageId);
+      return {success:false,reason:"no-content",subscription};
+    }
 
-  } else if (
-    typeof platformModule.pollChannel ===
-    "function"
-  ) {
-    refreshResult =
-      await platformModule.pollChannel(
-        subscription.channelId
-      );
+    const content = result.content;
+    const guild = await getGuild(client,guildId);
+
+    if (!guild) {
+      releaseRefresh(allowance.usageId);
+      return {success:false,reason:"guild-unavailable",subscription};
+    }
+
+    const eventType = getNotificationEventType(content,result.changes ?? {});
+    const message = await sendNewNotification(guild,content,eventType,subscription,true);
+
+    if (!message) {
+      releaseRefresh(allowance.usageId);
+      return {success:false,reason:"channel-unavailable",subscription};
+    }
+
+    messagePosted = true;
+
+    return {
+      success:true,
+      subscription,
+      content,
+      messageId:message.id,
+      remaining:allowance.remaining,
+      results
+    };
+  } catch (error) {
+    if (!messagePosted) releaseRefresh(allowance.usageId);
+    console.error(`Manual ${key} refresh failed for guild ${guildId}:`,error);
+    return {success:false,reason:"refresh-error",subscription};
   }
-
-  const results =
-    Array.isArray(refreshResult)
-      ? refreshResult
-      : refreshResult
-        ? [refreshResult]
-        : [];
-
-  for (
-    const result
-    of results
-  ) {
-    await processResult(
-      client,
-      result
-    );
-  }
-
-  return {
-    success: true,
-    subscription,
-    results
-  };
 }
+
+
 
 
 export async function manualRefresh(

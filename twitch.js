@@ -1000,43 +1000,32 @@ Channel Refresh
 =====================================================
 */
 
-export async function refreshChannel(
-  channelId
-) {
-  let channel =
-    getStoredChannel(
-      channelId
-    );
 
-  if (!channel) {
-    return null;
-  }
+export async function refreshChannel(channelId) {
+  let channel = getStoredChannel(channelId);
+  if (!channel) throw new Error(`Unknown Twitch channel: ${channelId}`);
 
   try {
-    const user =
-      await getUserById(
-        channelId
-      );
-
+    const user = await getUserById(channelId);
     if (user) {
-      saveChannel(
-        normalizeChannel(user)
-      );
-
-      channel =
-        getStoredChannel(
-          channelId
-        );
+      saveChannel(normalizeChannel(user));
+      channel = getStoredChannel(channelId);
     }
   } catch (error) {
-    console.error(
-      `Failed to refresh Twitch channel ${channelId}:`,
-      error.message
-    );
+    console.error(`Failed to refresh Twitch channel ${channelId}:`,error.message);
   }
 
-  return checkChannel(channel);
+  const streams = await getStreamsByUserIds([channelId]);
+  if (streams.length === 0) return [];
+
+  const content = normalizeStream(streams[0],channel);
+  const previous = getStoredContent(content.id);
+  const changes = compareStream(previous,content);
+
+  saveStream(content);
+  return [{content,changes}];
 }
+
 
 
 /*

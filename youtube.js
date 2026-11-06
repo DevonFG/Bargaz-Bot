@@ -11,7 +11,8 @@ const ENDED_CONTENT_RETENTION = 1800000;
 const API_COSTS = {
   channels: 1,
   playlistItems: 1,
-  videos: 1
+  videos: 1,
+  search: 100
 };
 
 let quotaUsed = 0;
@@ -476,6 +477,27 @@ function updateLastUploadId(
 
 /*
 =====================================================
+Current Livestream Lookup
+=====================================================
+*/
+
+async function getCurrentLivestreamIds(channelId) {
+  const data = await youtubeRequest("search",{
+    part:"snippet",
+    channelId,
+    eventType:"live",
+    type:"video",
+    maxResults:10
+  },API_COSTS.search);
+
+  return [...new Set(
+    (data.items ?? []).map(item => item.id?.videoId).filter(Boolean)
+  )];
+}
+
+
+/*
+=====================================================
 Video Information
 =====================================================
 */
@@ -835,7 +857,7 @@ function getStoredContent(videoId) {
 }
 
 
-function saveContent(content) {
+function saveContent(content,updateHistory = true) {
   const db = getDB();
 
   const existing =
@@ -900,11 +922,13 @@ function saveContent(content) {
     endedAt
   );
 
-  updateRecentIds(
-    content.channelId,
-    content.contentType,
-    content.id
-  );
+  if (updateHistory) {
+    updateRecentIds(
+      content.channelId,
+      content.contentType,
+      content.id
+    );
+  }
 
   return {
     existing,
@@ -1228,6 +1252,56 @@ export function cleanupEndedContent() {
     `).run(cutoff);
 
   return result.changes;
+}
+
+
+/*
+=====================================================
+Manual Channel Refresh
+=====================================================
+*/
+
+export async function refreshChannel(channelId) {
+  const channel = getStoredChannel(channelId);
+  if (!channel) throw new Error(`Unknown YouTube channel: ${channelId}`);
+
+  const liveIds = await getCurrentLivestreamIds(channelId);
+  const uploadIds = await getRecentUploadIds(channel.uploads_playlist_id,10);
+  const videoIds = [...new Set([...liveIds,...uploadIds])];
+
+  if (videoIds.length === 0) return [];
+
+  const videos = await getVideos(videoIds);
+  const results = [];
+
+  for (const video of videos) {
+    const content = normalizeVideo(video,channel);
+    if (content.channelId !== channelId || content.isEnded) continue;
+
+    const previous = getStoredContent(content.id);
+    const changes = compareContent(previous,content);
+
+    saveContent(content,false);
+    results.push({content,changes});
+  }
+
+  results.sort((a,b) => {
+    const getTime = content => {
+      const value = content.actualStartTime ??
+        content.publishedAt ??
+        content.scheduledStartTime;
+      const timestamp = value ? Date.parse(value) : 0;
+      return Number.isFinite(timestamp)?timestamp:0;
+    };
+
+    if (a.content.isLive !== b.content.isLive) {
+      return Number(b.content.isLive) - Number(a.content.isLive);
+    }
+
+    return getTime(b.content) - getTime(a.content);
+  });
+
+  return results;
 }
 
 

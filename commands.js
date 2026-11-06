@@ -319,15 +319,9 @@ export async function handleInteraction(interaction) {
         interaction, {successful: false, details: error.message}
       ).catch(loggingError => {console.error("Failed to log command error:", loggingError);});
     }
-    if (interaction.replied || interaction.deferred) {
-      await interaction
-        .followUp(response)
-        .catch(() => {});
-    } else {
-      await interaction
-        .reply(response)
-        .catch(() => {});
-    }
+    if (interaction.deferred && !interaction.replied) {await interaction.editReply({content:response.content}).catch(() => {});
+    } else if (interaction.replied)                   {await interaction.followUp(response).catch(() => {});
+    } else                                            {await interaction.reply(response).catch(() => {});}
   }
 }
 
@@ -618,7 +612,7 @@ function buildPermissionReview(target, oldProfile, newProfile) {
 // guild = Guild
 // target = Object, permission target
 async function getAllocationAccessSnapshot(guild, target) {
-  const members = await guild.members.fetch();
+  if (component.customId !== "permission:remove-confirm") {return;}
   const affected = [...members.values()].filter(member =>
     !member.user.bot && (target.type === permissions.PERMISSION_TYPES.ROLE ? target.id === guild.id || member.roles.cache.has(target.id) : member.id === target.id)
   ); return affected.map(member => ({member, allowed: permissions.canUseCommand(member, "entitlement", "allocate")}));
@@ -731,9 +725,10 @@ async function handlePermissionRemove(interaction) {
   const message   = await interaction.fetchReply();
   const collector = message.createMessageComponentCollector({time: 120000});
   collector.on("collect", async component => {
-    if (component.user.id !== interaction.user.id)                             {await component.reply({content:  "This confirmation belongs to another user.",        flags: discord.MessageFlags.Ephemeral}); return;}
+    if (component.user.id  !== interaction.user.id)                            {await component.reply({content:  "This confirmation belongs to another user.",        flags: discord.MessageFlags.Ephemeral}); return;}
     if (component.customId === "permission:remove-cancel")                     {await component.update({content: "Permission removal cancelled.",                     components: []}); collector.stop("cancelled"); return;}
-    if (!permissions.canUseCommand(component.member, "permissions", "remove")) {await component.update({content: "You no longer have permission to remove profiles.", components: []}); collector.stop("denied"); return;}
+    if (component.customId !== "permission:remove-confirm")                    {return;}
+    if (!permissions.canUseCommand(component.member,"permissions","remove"))   {await component.update({content: "You no longer have permission to remove profiles.", components: []}); collector.stop("denied"); return;}
     try {
       await component.deferUpdate();
       const allocationSnapshot = await getAllocationAccessSnapshot(interaction.guild, target);
@@ -876,7 +871,7 @@ async function handleNotificationAdd(interaction) {
     `This server has used all of its ` +
     `${notifications.getPlatformName(platform)} creator notification limit ` +
     `(**${result.usage}/${result.limit}**). ` +
-    `The limit much be increased before another channel can be added.`
+    `The limit must be increased before another channel can be added.`
   }); return;}
   await interaction.editReply({content:`BargazBot could not find that ${notifications.getPlatformName(platform)} channel.`}); return;}
   const destination = notificationChannel ? `${notificationChannel}` : "the server's BargazBot notification channel";
@@ -978,14 +973,40 @@ async function handleNotificationChannel(interaction) {
 
 // Requests a refresh of an existing creator notification
 // interaction = ChatInputCommandInteraction
+
 async function handleNotificationRefresh(interaction) {
-  const platform = interaction.options.getString("platform", true);
-  const nickname = interaction.options.getString("nickname", true);
+  const platform = interaction.options.getString("platform",true);
+  const nickname = interaction.options.getString("nickname",true);
+  const platformName = notifications.getPlatformName(platform);
   await interaction.deferReply({flags:discord.MessageFlags.Ephemeral});
-  const result   = await notifications.refreshSubscription(interaction.client, interaction.guild.id, nickname, platform);
-  if (!result.success) {await interaction.editReply({content:`No ${notifications.getPlatformName(platform)} notification was found with the nickname **${nickname}**.`}); return;}
-  await interaction.editReply({content:`Refreshed **${result.subscription.nickname}** on ` + `**${notifications.getPlatformName(result.subscription.platform)}**.`});
+  try {
+    const result = await notifications.refreshSubscription(interaction.client,interaction.guild.id,nickname,platform);
+    if (!result.success) { let message;
+      switch (result.reason) {
+        case "not-found":                                                         message = `No ${platformName} notification was found with the nickname **${nickname}**.`; break;
+        case "refresh-limit": { const retryAt = Math.ceil(result.retryAt / 1000); message = `You've reached the refresh limit for **${platformName}** (2 successful refreshes per 6 hours).\nYou can refresh again <t:${retryAt}:R>.`; break;}
+        case "no-content":                                                        message = `No current content was found for **${nickname}** on ${platformName}. Your refresh allowance was not used.`; break;
+        case "guild-unavailable":                                                 message = "BargazBot couldn't access this Discord server. Your refresh allowance was not used."; break;
+        case "channel-unavailable":                                               message = "BargazBot couldn't access a notification channel to post the announcement. Your refresh allowance was not used."; break;
+        case "refresh-error":                                                     message = `An error occurred while refreshing **${nickname}** on ${platformName}. Please try again later.`; break;
+        default:                                                                  message = `Unable to refresh **${nickname}** on ${platformName}.`;
+      }
+      await interaction.editReply({content:message}); return;
+    }
+    const content = result.content;
+    const remaining = result.remaining;
+    const contentName = content.title || "Untitled content";
+    await interaction.editReply({
+      content:
+        `Successfully refreshed **${result.subscription.nickname}** on **${platformName}**.\n` +
+        `**Content:** ${contentName}\n` +
+        `**Type:** ${content.contentType || "content"}\n` +
+        `**Remaining refreshes:** ${remaining} of 2 for ${platformName}.\n` +
+        `The notification was posted successfully.`
+    });
+  } catch (error) {console.error("Notification refresh command failed:",error); await interaction.editReply({content:"An unexpected error occurred while processing the refresh command."});}
 }
+
 
 // Displays the server's configured creator notifications
 // interaction = ChatInputCommandInteraction
@@ -1006,19 +1027,17 @@ async function handleNotificationList(interaction) {
         );
       }
     );
-  const chunks = [];
-  let current  = "";
+  const chunks = []; let current = "";
   for (const line of lines) {
-    const candidate = current ? `${current}\n\n${line}` : line;
-    if (candidate.length > 3900) {chunks.push(current); current = line;} else {current = candidate;}
+    const safeLine = line.slice(0,3900);
+    const candidate = current ? `${current}\n\n${safeLine}` : safeLine;
+    if (candidate.length > 3900) {if (current) {chunks.push(current);} current = safeLine;} else {current = candidate;}
   }
   if (current) {chunks.push(current);}
-  const embeds =
-    chunks.map((description, index) =>
-        new discord.EmbedBuilder()
-          .setTitle(index === 0 ? "Creator Notifications" : `Creator Notifications (${index + 1})`)
-          .setDescription(description)
-          .setTimestamp()
-    );
+  const embeds = chunks.map((description, index) => new discord.EmbedBuilder()
+    .setTitle(index === 0 ? "Creator Notifications" : `Creator Notifications (${index + 1})`)
+    .setDescription(description)
+    .setTimestamp()
+  );
   await interaction.reply({embeds, flags:discord.MessageFlags.Ephemeral});
 }

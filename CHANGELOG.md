@@ -15,6 +15,17 @@ Any other changes, regardless of size, is considered a patch. (Very few exceptio
 Note: A change from dev or beta to a release is not impacted by an untestable feature like needing to wait for a
 specific platform to have new content. In cases like that, the untested feature can be logged and the version released.
 
+## v26.9.0-dev.2 - Nov 5
+- /notification refresh rework
+  - Command now grabs most recent content, including a stream that started before the channel was added to being tracked with the bot
+  - Prioritized livestreams over regular uploads
+  - Added a limit of 2 refreshed per platform, per server, every 6 hours
+  - Failed refreshed do not count toward the limit
+- Kick notifications debugging
+  - Updated API requests to retrieve current stream information
+  - Fixed notification tracking so failed announcements do not remove existing tracking information
+- Edited YouTube's and Twitch's process for refreshing
+
 ## v26.9.0-dev.1 - Nov 5
 - Added new levels of configuration to what permissions a person can have to configure BargazBot
 - Added individual command and subcommand permissions for users and roles

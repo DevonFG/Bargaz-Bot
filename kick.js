@@ -491,6 +491,22 @@ export function getSubscribedGuilds(channelId) {
   `).all(channelId);
 }
 
+
+async function getCurrentLivestream(channelId) {
+  const data = await kickRequest("users/livestreams",{
+    broadcaster_user_id:channelId
+  });
+
+  if (!Array.isArray(data) && !Array.isArray(data?.data)) {
+    throw new Error("Unexpected Kick livestream API response.");
+  }
+  const streams = getResponseItems(data);
+  return streams.find(stream =>
+    String(stream.broadcaster_user_id ?? stream.user_id) === String(channelId)
+  ) ?? null;
+}
+
+
 /*
 =====================================================
 Livestream Information
@@ -576,91 +592,33 @@ function isChannelLive(channel) {
 }
 
 
-function normalizeStream(
-  channel,
-  storedChannel
-) {
-  if (
-    !channel ||
-    !isChannelLive(channel)
-  ) {
-    return null;
-  }
 
-  const livestream =
-    getLivestreamObject(channel);
+function normalizeStream(channel,storedChannel) {
+  if (!channel) return null;
 
-  const streamId =
-    getStreamId(
-      channel,
-      livestream
-    );
+  const livestream = getLivestreamObject(channel) ?? channel;
+  const channelId = String(channel.broadcaster_user_id ?? channel.user_id ?? storedChannel.channel_id);
+  const slug = getChannelSlug(channel) ?? storedChannel.channel_handle?.replace("@","");
 
-  if (!streamId) {
-    return null;
-  }
-
-  const slug =
-    getChannelSlug(channel) ??
-    storedChannel.channel_handle
-      ?.replace("@", "");
+  const streamId = String(livestream.id ?? livestream.stream_id ?? `${channelId}:${livestream.started_at ?? livestream.start_time ?? "live"}`);
 
   return {
-    id:
-      streamId,
-
-    platform:
-      "kick",
-
-    channelId:
-      getChannelId(channel) ||
-      storedChannel.channel_id,
-
-    channelName:
-      getChannelName(channel) ||
-      storedChannel.channel_name,
-
-    channelHandle:
-      slug
-        ? `@${slug}`
-        : storedChannel.channel_handle,
-
-    title:
-      getStreamTitle(
-        channel,
-        livestream
-      ),
-
-    thumbnail:
-      getStreamThumbnail(
-        channel,
-        livestream
-      ),
-
-    url:
-      slug
-        ? `https://kick.com/${slug}`
-        : storedChannel.channel_url,
-
-    contentType:
-      "stream",
-
-    liveState:
-      "live",
-
-    isLive:
-      true,
-
-    isEnded:
-      false,
-
-    startedAt:
-      getStartedAt(
-        channel,
-        livestream
-      )
+    id:streamId,
+    platform:"kick",
+    channelId,
+    channelName:channel.broadcaster_user_name ?? channel.user_name ?? storedChannel.channel_name,
+    channelHandle:slug ? `@${slug}` : storedChannel.channel_handle,
+    title:getStreamTitle(channel,livestream),
+    thumbnail:getStreamThumbnail(channel,livestream),
+    url:slug ? `https://kick.com/${slug}` : storedChannel.channel_url,
+    contentType:"stream",
+    liveState:"live",
+    isLive:true,
+    isEnded:false,
+    startedAt:getStartedAt(channel,livestream)
   };
 }
+
 
 
 /*
@@ -845,12 +803,7 @@ export async function checkChannel(channel) {
     return null;
   }
 
-  const apiChannel =
-    await getChannelBySlug(slug);
-
-  if (!apiChannel) {
-    return null;
-  }
+  const apiChannel = await getCurrentLivestream(channel.channel_id);
 
   const previous =
     getStoredContent(
@@ -1001,55 +954,22 @@ Channel Refresh
 =====================================================
 */
 
-export async function refreshChannel(
-  channelId
-) {
-  let channel =
-    getStoredChannel(
-      channelId
-    );
 
-  if (!channel) {
-    return null;
-  }
+export async function refreshChannel(channelId) {
+  const channel = getStoredChannel(channelId);
+  if (!channel) throw new Error(`Unknown Kick channel: ${channelId}`);
 
-  const slug =
-    channel.channel_handle
-      ?.replace("@", "");
+  const stream = await getCurrentLivestream(channelId);
+  if (!stream) return [];
 
-  if (!slug) {
-    return null;
-  }
+  const content = normalizeStream(stream,channel);
+  const previous = getStoredContent(content.channelId);
+  const changes = compareStream(previous,content);
 
-  try {
-    const apiChannel =
-      await getChannelBySlug(
-        slug
-      );
-
-    const normalized =
-      normalizeChannel(
-        apiChannel
-      );
-
-    if (normalized) {
-      saveChannel(normalized);
-
-      channel =
-        getStoredChannel(
-          normalized.channelId
-        );
-    }
-
-  } catch (error) {
-    console.error(
-      `Failed to refresh Kick channel ${channelId}:`,
-      error.message
-    );
-  }
-
-  return checkChannel(channel);
+  saveStream(content);
+  return [{content,changes}];
 }
+
 
 
 /*
